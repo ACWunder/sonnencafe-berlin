@@ -474,7 +474,7 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       <div ref={mapRef} className="w-full h-full" />
 
       {fetching && (
-        <div className="absolute top-3 left-3 z-[1000] bg-white/80 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-lg shadow-zinc-200/30 px-3.5 py-2 flex items-center gap-2 font-body text-zinc-500" style={{ fontSize: "12px" }}>
+        <div className="absolute top-3 left-14 z-[1000] bg-white/80 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-lg shadow-zinc-200/30 px-3.5 py-2 flex items-center gap-2 font-body text-zinc-500" style={{ fontSize: "12px" }}>
           <div className="w-3 h-3 border-[1.5px] border-amber-400 border-t-transparent rounded-full animate-spin" />
           Gebäude laden…
         </div>

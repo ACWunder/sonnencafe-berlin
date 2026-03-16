@@ -151,14 +151,6 @@ export default function Home() {
 
       {/* ── Header ── */}
       <header className="bg-white/80 backdrop-blur-xl border-b border-zinc-100 px-3 py-2 flex items-center gap-2 shrink-0 z-10 overflow-hidden">
-        {/* Hamburger — mobile only */}
-        <button
-          onClick={() => setSidebarOpen(true)}
-          className="md:hidden w-7 h-7 flex items-center justify-center text-zinc-500 hover:text-zinc-800 active:scale-95 transition-all shrink-0 -ml-0.5"
-        >
-          <Menu className="w-4 h-4" />
-        </button>
-
         {/* Brand */}
         <div className="flex items-center gap-2 shrink-0">
           <div className="w-7 h-7 rounded-[8px] bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-sm shadow-amber-200">
@@ -409,6 +401,14 @@ export default function Home() {
             onSunRemaining={handleSunRemaining}
             onSunTimeline={handleSunTimeline}
           />
+
+          {/* Hamburger — floating below app icon, mobile only */}
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="md:hidden absolute top-3 left-3 z-[500] w-9 h-9 bg-white/90 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-lg shadow-zinc-200/40 flex items-center justify-center text-zinc-500 active:scale-95 transition-all"
+          >
+            <Menu className="w-4 h-4" />
+          </button>
 
           {/* Mobile: floating cafe card — fixed, right-aligned, same bottom as legend */}
           {selectedCafe && (
