@@ -369,7 +369,8 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       L.control.zoom({ position: "bottomright" }).addTo(map);
 
       // Attribution moved to Impressum in the UI
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      // Base map without labels — labels are added on top of all overlays
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
         attribution: "",
         maxZoom: 19,
       }).addTo(map);
@@ -430,6 +431,16 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       // Location pane above cafes
       const locationPane = map.createPane("locationPane");
       locationPane.style.zIndex = "404";
+
+      // Labels pane on top of everything — street names always readable
+      const labelsPane = map.createPane("labelsPane");
+      labelsPane.style.zIndex = "405";
+      labelsPane.style.pointerEvents = "none";
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png", {
+        attribution: "",
+        maxZoom: 19,
+        pane: "labelsPane",
+      }).addTo(map);
     });
 
     return () => {
