@@ -46,6 +46,24 @@ body {
 .leaflet-container {
   font-family: 'DM Sans', sans-serif !important;
   border-radius: 12px;
+  /* Match the visual appearance of CARTO light tiles + amber overlay so
+     unloaded tile areas are indistinguishable from loaded ones            */
+  background: #fbf2ce !important;
+}
+
+/* Eliminate tile fade-in: tiles appear at full opacity instantly.
+   Combined with the background-color match above this removes the
+   yellow/white flash when panning or zooming.                             */
+.leaflet-fade-anim .leaflet-tile {
+  transition: none !important;
+  opacity: 1 !important;
+}
+.leaflet-fade-anim .leaflet-popup {
+  transition: opacity 0.2s linear;
+}
+/* Tile containers during zoom animation */
+.leaflet-zoom-anim .leaflet-tile-container {
+  will-change: transform;
 }
 
 .leaflet-popup-content-wrapper {
