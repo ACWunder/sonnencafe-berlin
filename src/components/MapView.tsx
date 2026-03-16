@@ -487,7 +487,7 @@ function SunCompass({ timeState }: { timeState: TimeState }) {
   const pos = getSunPosition(NEUBAU_CENTER[0], NEUBAU_CENTER[1], date);
   const isUp = pos.altitudeDeg > 0;
 
-  const size = 36;
+  const size = 52;
   const r = size / 2;
   const pad = 10;
   const innerR = r - pad;
@@ -497,7 +497,7 @@ function SunCompass({ timeState }: { timeState: TimeState }) {
   const sy = r - distFraction * innerR * Math.cos(azRad);
 
   return (
-    <div className="bg-white/90 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-lg shadow-zinc-200/40 p-1.5">
+    <div className="bg-white/90 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-lg shadow-zinc-200/40 p-2 inline-flex">
       <svg width={size} height={size}>
         <defs>
           <radialGradient id="skyGrad" cx="50%" cy="50%" r="50%">
