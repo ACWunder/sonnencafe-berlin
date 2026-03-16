@@ -449,7 +449,7 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       )}
 
       {/* Legend + compass stacked bottom-left */}
-      <div className="absolute z-[500] flex flex-col gap-2" style={{ bottom: "24px", left: "12px" }}>
+      <div className="absolute z-[500] flex flex-col gap-2 items-start" style={{ bottom: "24px", left: "12px" }}>
         <SunCompass timeState={timeState} />
         <Legend />
       </div>
