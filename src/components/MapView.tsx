@@ -198,7 +198,7 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
   const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function updateCafeDots(L: any) {
+  function updateCafeDots(L: any, recomputeSunData = true) {
     const cLayer = cafeLayerRef.current;
     if (!cLayer) return;
     cLayer.clearLayers();
@@ -233,7 +233,7 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
         color: isSelected ? "#ffffff" : "transparent",
         fillColor: color,
         fillOpacity: 1,
-        weight: isSelected ? 2 : 10, // large transparent stroke = bigger click target
+        weight: isSelected ? 2 : 10,
         interactive: true,
         pane: "cafePane",
       });
@@ -251,20 +251,36 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       marker.addTo(cLayer);
     });
 
-    // Compute sun-remaining + day timeline for all cafes (deferred to avoid blocking render)
+    // Heavy computation: sun-remaining + day timeline for all cafes.
+    // Skipped on selection-change (data doesn't change, only dot appearance does).
+    // Processed in chunks of 15 so the UI stays responsive on mobile.
+    if (!recomputeSunData) return;
+
     const buildings = Array.from(buildingCacheRef.current.values());
     const currentDate = new Date(`${timeStateRef.current.date}T${timeStateRef.current.time}:00`);
     const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), 12, 0, 0);
-    setTimeout(() => {
-      const remaining: Record<string, number | null> = {};
-      const timelines: SunTimelineData = {};
-      cafesRef.current.forEach((cafe) => {
+    const allCafes = [...cafesRef.current];
+    const remaining: Record<string, number | null> = {};
+    const timelines: SunTimelineData = {};
+    const CHUNK = 15;
+    let idx = 0;
+
+    function processChunk() {
+      const end = Math.min(idx + CHUNK, allCafes.length);
+      for (; idx < end; idx++) {
+        const cafe = allCafes[idx];
         remaining[cafe.id] = calcSunRemaining(cafe, currentDate, buildings);
         timelines[cafe.id] = calcDayTimeline(cafe, dayDate, buildings);
-      });
-      onSunRemainingRef.current(remaining);
-      onSunTimelineRef.current(timelines);
-    }, 0);
+      }
+      if (idx < allCafes.length) {
+        setTimeout(processChunk, 0); // yield to UI between chunks
+      } else {
+        onSunRemainingRef.current(remaining);
+        onSunTimelineRef.current(timelines);
+      }
+    }
+
+    setTimeout(processChunk, 0);
   }
 
   // Rebuild the building layer from cache and redraw shadows
@@ -424,17 +440,19 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cafes]);
 
-  // Redraw dots when selection changes (size + ring update)
+  // Redraw dots when selection changes — only visual update, no sun recomputation
   useEffect(() => {
     if (!cafeLayerRef.current) return;
-    import("leaflet").then((L) => updateCafeDots(L));
+    import("leaflet").then((L) => updateCafeDots(L, false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCafe]);
 
-  // Pan to selected cafe
+  // Pan to selected cafe (don't zoom in too far — avoids loading extra buildings)
   useEffect(() => {
     if (!selectedCafe || !mapInstanceRef.current) return;
-    mapInstanceRef.current.setView([selectedCafe.lat, selectedCafe.lng], 17, { animate: true, duration: 0.5 });
+    const map = mapInstanceRef.current;
+    const currentZoom = map.getZoom();
+    map.setView([selectedCafe.lat, selectedCafe.lng], Math.max(currentZoom, 16), { animate: true, duration: 0.4 });
   }, [selectedCafe]);
 
   return (
