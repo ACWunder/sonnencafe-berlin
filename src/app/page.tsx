@@ -46,10 +46,10 @@ export default function Home() {
       .catch(() => {});
   }, []);
 
-  // Auto-expand sheet when a cafe is selected on mobile
+  // Collapse sheet when a cafe is selected on mobile — card appears above it
   useEffect(() => {
     if (selectedCafe !== null) {
-      setSheetExpanded(true);
+      setSheetExpanded(false);
     }
   }, [selectedCafe]);
 
@@ -300,6 +300,23 @@ export default function Home() {
             onSunTimeline={handleSunTimeline}
           />
 
+          {/* Mobile: floating cafe card above sheet — Google Maps style */}
+          {selectedCafe && (
+            <div
+              className="md:hidden absolute left-3 right-3 z-30 mobile-cafe-card-enter"
+              style={{ bottom: "84px" }}
+            >
+              <SelectedCafeCard
+                key={selectedCafe.id}
+                cafe={selectedCafe}
+                mins={sunRemaining[selectedCafe.id]}
+                timeline={sunTimelines[selectedCafe.id]}
+                currentMinute={currentMinute}
+                onClose={() => setSelectedCafe(null)}
+              />
+            </div>
+          )}
+
           {/* Mobile bottom sheet — hidden on desktop */}
           <div
             className="bottom-sheet md:hidden absolute bottom-0 left-0 right-0 z-20 bg-white rounded-t-3xl shadow-2xl flex flex-col"
@@ -307,11 +324,10 @@ export default function Home() {
               height: "68vh",
               transform: sheetExpanded ? "translateY(0)" : "translateY(calc(68vh - 76px))",
               transition: "transform 0.38s cubic-bezier(0.16, 1, 0.3, 1)",
-              // When collapsed, only the handle area is interactive — rest passes touch events to map
               pointerEvents: sheetExpanded ? "auto" : "none",
             }}
           >
-            {/* Drag handle — always interactive even when sheet is collapsed */}
+            {/* Drag handle */}
             <div
               className="flex items-center justify-center pt-3 pb-2 shrink-0 cursor-pointer"
               style={{ pointerEvents: "auto" }}
@@ -325,18 +341,6 @@ export default function Home() {
             >
               <div className="w-10 h-1 rounded-full bg-zinc-200" />
             </div>
-
-            {/* Selected cafe card */}
-            {selectedCafe && (
-              <SelectedCafeCard
-                key={selectedCafe.id}
-                cafe={selectedCafe}
-                mins={sunRemaining[selectedCafe.id]}
-                timeline={sunTimelines[selectedCafe.id]}
-                currentMinute={currentMinute}
-                onClose={() => setSelectedCafe(null)}
-              />
-            )}
 
             {/* Search */}
             <div className="px-3 pt-2 pb-1 shrink-0">

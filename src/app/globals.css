@@ -140,6 +140,15 @@ aside ::-webkit-scrollbar-track {
   background: transparent;
 }
 
+/* Mobile cafe card slide-up */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.mobile-cafe-card-enter {
+  animation: slideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* Mobile bottom sheet */
 @media (max-width: 767px) {
   .bottom-sheet-list {
