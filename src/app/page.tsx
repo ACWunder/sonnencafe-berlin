@@ -571,6 +571,14 @@ function SelectedCafeCard({
         </div>
       </div>
 
+      {/* Sun timeline */}
+      {timeline && (
+        <div className="px-4 pb-3 pt-1">
+          <p className="text-[9px] font-body text-zinc-400 uppercase tracking-widest mb-1.5" style={{ fontWeight: 700 }}>Heute</p>
+          <SunTimelineBar timeline={timeline} currentMinute={currentMinute} isSunny={isSunny} thick />
+        </div>
+      )}
+
       {/* Card footer */}
       <div className="px-3 py-2.5 border-t border-zinc-50">
         <a
@@ -608,10 +616,12 @@ function SunTimelineBar({
   timeline,
   currentMinute,
   isSunny,
+  thick = false,
 }: {
   timeline: SunTimeline;
   currentMinute: number;
   isSunny: boolean;
+  thick?: boolean;
 }) {
   const { inSun, startMinute, intervalMin } = timeline;
   const totalMinutes = inSun.length * intervalMin;
@@ -631,16 +641,20 @@ function SunTimelineBar({
     }
   }
 
+  const barH = thick ? "4px" : "1px";
+  const tickH = thick ? "12px" : "7px";
+  const tickTop = thick ? "-4px" : "-3px";
+
   return (
     <div className="mt-2">
-      <div className="relative h-px rounded-full" style={{ background: buildSunGradient(inSun) }}>
+      <div className="relative rounded-full" style={{ height: barH, background: buildSunGradient(inSun) }}>
         {nowVisible && (
           <div
             className="absolute rounded-full bg-zinc-500"
             style={{
               width: "2px",
-              height: "7px",
-              top: "-3px",
+              height: tickH,
+              top: tickTop,
               left: `${nowFraction * 100}%`,
               transform: "translateX(-50%)",
             }}
