@@ -392,14 +392,13 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       // Zoom control only on desktop — hidden via CSS on mobile
       L.control.zoom({ position: "bottomright" }).addTo(map);
 
-      // Tile options: load continuously while panning and zooming
+      // Tile options: load continuously while panning, buffer extra tiles
       const tileOptions = {
         attribution: "",
         maxZoom: 19,
-        keepBuffer: 6,         // Pre-load 6 tiles outside viewport in each direction
-        updateWhenIdle: false, // Load tiles while panning, not just when stopped
-        // updateWhenZooming defaults to true → tiles start loading during pinch
-        // zoom so edges are covered before the user lifts their fingers
+        keepBuffer: 6,            // Pre-load 6 tiles outside viewport in each direction
+        updateWhenIdle: false,    // Load tiles while panning, not just when stopped
+        updateWhenZooming: false, // Don't reload tiles mid-gesture (avoids jank on mobile)
       };
 
       // Attribution moved to Impressum in the UI
@@ -417,18 +416,15 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       cafePaneEl.style.zIndex = "405"; // above labels
       cafePaneEl.style.pointerEvents = "auto";
 
-      // Pre-create canvas renderers with large padding for each custom pane.
-      // Leaflet normally auto-creates one renderer per custom pane ON DEMAND
-      // (when the first layer is added), but always uses the default padding=0.1
-      // — only 10% of the viewport. That means the canvas edge is reached after
-      // barely any pan or zoom, causing layers to vanish mid-gesture.
-      // By pre-populating map._paneRenderers before any layers are added,
-      // Leaflet picks up our padded instances instead of creating its own.
-      // padding=1.0 → canvas covers 3× the viewport in each dimension,
-      // so the user rarely reaches the edge between RAF redraws.
+      // Pre-create canvas renderers for each custom pane with padding=0.3.
+      // Leaflet auto-creates pane renderers on-demand with default padding=0.1
+      // (10% of viewport). During zoom-out the CSS-scaled canvas quickly falls
+      // short of the new viewport size. padding=0.3 gives a 1.6× canvas — small
+      // enough that redrawing 27k polygons stays fast, large enough that the
+      // 150ms throttle between redraws never exposes bare background.
       (map as any)._paneRenderers = (map as any)._paneRenderers ?? {};
       (["greenPane", "shadowPane", "buildingPane", "cafePane"] as const).forEach((pane) => {
-        const r = L.canvas({ padding: 1.0, pane });
+        const r = L.canvas({ padding: 0.3, pane });
         (map as any)._paneRenderers[pane] = r;
         r.addTo(map);
       });
