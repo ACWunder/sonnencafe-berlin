@@ -392,13 +392,14 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       // Zoom control only on desktop — hidden via CSS on mobile
       L.control.zoom({ position: "bottomright" }).addTo(map);
 
-      // Tile options: load continuously while panning, buffer extra tiles
+      // Tile options: load continuously while panning and zooming
       const tileOptions = {
         attribution: "",
         maxZoom: 19,
-        keepBuffer: 6,           // Pre-load 6 tiles outside viewport in each direction
-        updateWhenIdle: false,   // Load tiles while panning, not just when stopped
-        updateWhenZooming: false,
+        keepBuffer: 6,         // Pre-load 6 tiles outside viewport in each direction
+        updateWhenIdle: false, // Load tiles while panning, not just when stopped
+        // updateWhenZooming defaults to true → tiles start loading during pinch
+        // zoom so edges are covered before the user lifts their fingers
       };
 
       // Attribution moved to Impressum in the UI
@@ -415,6 +416,22 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       const cafePaneEl = map.createPane("cafePane");
       cafePaneEl.style.zIndex = "405"; // above labels
       cafePaneEl.style.pointerEvents = "auto";
+
+      // Pre-create canvas renderers with large padding for each custom pane.
+      // Leaflet normally auto-creates one renderer per custom pane ON DEMAND
+      // (when the first layer is added), but always uses the default padding=0.1
+      // — only 10% of the viewport. That means the canvas edge is reached after
+      // barely any pan or zoom, causing layers to vanish mid-gesture.
+      // By pre-populating map._paneRenderers before any layers are added,
+      // Leaflet picks up our padded instances instead of creating its own.
+      // padding=1.0 → canvas covers 3× the viewport in each dimension,
+      // so the user rarely reaches the edge between RAF redraws.
+      (map as any)._paneRenderers = (map as any)._paneRenderers ?? {};
+      (["greenPane", "shadowPane", "buildingPane", "cafePane"] as const).forEach((pane) => {
+        const r = L.canvas({ padding: 1.0, pane });
+        (map as any)._paneRenderers[pane] = r;
+        r.addTo(map);
+      });
 
       // Yellow sunny overlay – only covers districts 6/7/8, not the whole world
       L.rectangle(
