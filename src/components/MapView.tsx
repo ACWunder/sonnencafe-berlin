@@ -226,6 +226,8 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
 
   // All buildings ever fetched, keyed by OSM id → no duplicates when viewports overlap
   const buildingCacheRef = useRef<Map<number, BuildingFeature>>(new Map());
+  // Incremented each time a new sun-computation run starts; stale runs bail early.
+  const sunGenRef = useRef(0);
 
   // Return only buildings whose bounding box overlaps the current padded viewport.
   // pad(1.0) = 100% of viewport per side — covers canvas padding (0.6×) + max shadow
@@ -333,7 +335,8 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
 
     // Heavy computation: sun-remaining + day timeline for all cafes.
     // Skipped on selection-change (data doesn't change, only dot appearance does).
-    // Processed in chunks of 15 so the UI stays responsive on mobile.
+    // Processed in chunks of 15. Uses requestIdleCallback so chunks only run
+    // when the browser has no rendering work pending — map gestures stay smooth.
     if (!recomputeSunData) return;
 
     const buildings = Array.from(buildingCacheRef.current.values());
@@ -344,8 +347,17 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
     const timelines: SunTimelineData = {};
     const CHUNK = 15;
     let idx = 0;
+    const gen = ++sunGenRef.current; // cancel any previous in-flight run
+
+    // Schedule via requestIdleCallback when available (runs during browser idle,
+    // never competing with touch/animation work). Fall back to setTimeout(16) ≈ one frame.
+    const schedule = (fn: () => void) =>
+      typeof requestIdleCallback !== "undefined"
+        ? requestIdleCallback(fn, { timeout: 3000 })
+        : setTimeout(fn, 16);
 
     function processChunk() {
+      if (sunGenRef.current !== gen) return; // superseded by a newer run
       const end = Math.min(idx + CHUNK, allCafes.length);
       for (; idx < end; idx++) {
         const cafe = allCafes[idx];
@@ -353,14 +365,14 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
         timelines[cafe.id] = calcDayTimeline(cafe, dayDate, buildings);
       }
       if (idx < allCafes.length) {
-        setTimeout(processChunk, 0); // yield to UI between chunks
+        schedule(processChunk);
       } else {
         onSunRemainingRef.current(remaining);
         onSunTimelineRef.current(timelines);
       }
     }
 
-    setTimeout(processChunk, 0);
+    schedule(processChunk);
   }
 
   // Rebuild the building layer from cache and redraw shadows
