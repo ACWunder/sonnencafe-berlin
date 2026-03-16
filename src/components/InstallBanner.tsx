@@ -1,0 +1,106 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { X, Share, MoreVertical } from "lucide-react";
+
+export function InstallBanner() {
+  const [show, setShow] = useState(false);
+  const [platform, setPlatform] = useState<"ios" | "android" | null>(null);
+
+  useEffect(() => {
+    // Already installed as PWA → don't show
+    const isStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (navigator as unknown as { standalone?: boolean }).standalone === true;
+    if (isStandalone) return;
+
+    // Only show on mobile
+    const ua = navigator.userAgent;
+    const isIOS = /iPad|iPhone|iPod/.test(ua);
+    const isAndroid = /Android/.test(ua);
+    if (!isIOS && !isAndroid) return;
+
+    // Don't show if dismissed within last 7 days
+    const dismissed = localStorage.getItem("installBannerDismissed");
+    if (dismissed && Date.now() - Number(dismissed) < 7 * 24 * 60 * 60 * 1000) return;
+
+    setPlatform(isIOS ? "ios" : "android");
+    // Small delay so it doesn't pop up instantly on first load
+    const t = setTimeout(() => setShow(true), 1500);
+    return () => clearTimeout(t);
+  }, []);
+
+  function dismiss() {
+    localStorage.setItem("installBannerDismissed", String(Date.now()));
+    setShow(false);
+  }
+
+  if (!show || !platform) return null;
+
+  return (
+    <div
+      className="fixed bottom-0 left-0 right-0 z-[99999] px-4 pb-6 pt-2"
+      style={{ animation: "slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1)" }}
+    >
+      <div className="bg-white rounded-2xl shadow-2xl shadow-zinc-300/50 border border-zinc-100 p-4">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-md shadow-amber-200 shrink-0">
+              <span style={{ fontSize: 24 }}>☀️</span>
+            </div>
+            <div>
+              <p className="font-display font-bold text-zinc-900 text-[14px] leading-tight">
+                Sonnencafe Wien
+              </p>
+              <p className="text-[11px] text-zinc-400 font-body mt-0.5">
+                Zum Home-Bildschirm hinzufügen
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={dismiss}
+            className="w-6 h-6 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-400 hover:text-zinc-600 transition-colors shrink-0 mt-0.5"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+
+        {/* Instructions */}
+        {platform === "ios" ? (
+          <div className="bg-amber-50 rounded-xl p-3 space-y-2">
+            <p className="text-[12px] font-body text-zinc-600 font-medium">So geht's auf iOS:</p>
+            <div className="flex items-center gap-2 text-[12px] font-body text-zinc-500">
+              <span className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-amber-600">1</span>
+              <span>Tippe auf</span>
+              <span className="inline-flex items-center gap-1 bg-white border border-zinc-200 rounded-lg px-1.5 py-0.5 text-zinc-600">
+                <Share className="w-3 h-3" /> Teilen
+              </span>
+              <span>unten in Safari</span>
+            </div>
+            <div className="flex items-center gap-2 text-[12px] font-body text-zinc-500">
+              <span className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-amber-600">2</span>
+              <span>Wähle <strong className="text-zinc-700">„Zum Home-Bildschirm"</strong></span>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-amber-50 rounded-xl p-3 space-y-2">
+            <p className="text-[12px] font-body text-zinc-600 font-medium">So geht's auf Android:</p>
+            <div className="flex items-center gap-2 text-[12px] font-body text-zinc-500">
+              <span className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-amber-600">1</span>
+              <span>Tippe auf</span>
+              <span className="inline-flex items-center gap-1 bg-white border border-zinc-200 rounded-lg px-1.5 py-0.5 text-zinc-600">
+                <MoreVertical className="w-3 h-3" /> Menü
+              </span>
+              <span>oben rechts</span>
+            </div>
+            <div className="flex items-center gap-2 text-[12px] font-body text-zinc-500">
+              <span className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-amber-600">2</span>
+              <span>Wähle <strong className="text-zinc-700">„App installieren"</strong></span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

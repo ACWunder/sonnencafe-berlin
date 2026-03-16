@@ -6,6 +6,7 @@ import { format } from "date-fns";
 import { Sun, Search, MapPin, X, ExternalLink, Info, Menu } from "lucide-react";
 import type { Cafe, TimeState, SunTimeline, SunTimelineData } from "@/types";
 import { MapView } from "@/components/MapView";
+import { InstallBanner } from "@/components/InstallBanner";
 
 export default function Home() {
   const [timeState, setTimeState] = useState<TimeState>(() => {
@@ -148,6 +149,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[#f7f6f3]">
+      <InstallBanner />
 
       {/* ── Header ── */}
       <header className="bg-white/80 backdrop-blur-xl border-b border-zinc-100 px-3 py-2 flex items-center gap-2 shrink-0 z-10 overflow-hidden">

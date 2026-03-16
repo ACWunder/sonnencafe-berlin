@@ -1,17 +1,43 @@
 // src/app/layout.tsx
 
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
+export const viewport: Viewport = {
+  themeColor: "#f59e0b",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 export const metadata: Metadata = {
-  title: "SonnenCafé Wien – Sonnige Cafés in Wien entdecken",
+  title: "Sonnencafe Wien – Sonnige Cafés entdecken",
   description:
-    "Finde Cafés und Spots in Wien, die genau jetzt oder zur gewünschten Uhrzeit in der Sonne liegen.",
-  keywords: ["Wien", "Café", "Sonne", "Sonnig", "Schanigarten", "Vienna"],
+    "Welches Café in Wien liegt gerade in der Sonne? Sonnencafe zeigt dir in Echtzeit, wo du jetzt einen sonnigen Platz findest – für jeden Tag und jede Uhrzeit.",
+  keywords: ["Wien", "Café", "Sonne", "Sonnig", "Schanigarten", "Vienna", "Kaffee", "Terrasse"],
+  authors: [{ name: "Sonnencafe Wien" }],
+  creator: "Sonnencafe Wien",
+  applicationName: "Sonnencafe Wien",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Sonnencafé",
+  },
+  formatDetection: {
+    telephone: false,
+  },
   openGraph: {
-    title: "SonnenCafé Wien",
-    description: "Sonnige Cafés in Wien – jetzt und zu jeder Uhrzeit",
+    title: "Sonnencafe Wien – Sonnige Cafés entdecken",
+    description: "Welches Café in Wien liegt gerade in der Sonne? Echtzeit-Schattenberechnung für Wien.",
     type: "website",
+    locale: "de_AT",
+    siteName: "Sonnencafe Wien",
+  },
+  twitter: {
+    card: "summary",
+    title: "Sonnencafe Wien",
+    description: "Welches Café in Wien liegt gerade in der Sonne?",
   },
 };
 
