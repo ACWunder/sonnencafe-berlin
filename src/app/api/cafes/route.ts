@@ -1,5 +1,7 @@
 // src/app/api/cafes/route.ts
 
+export const maxDuration = 45; // Vercel: allow up to 45s for Overpass fetch
+
 import { NextResponse } from "next/server";
 import { fetchCafesFromOverpass, VIENNA_BBOX } from "@/lib/overpass";
 import { FALLBACK_CAFES } from "@/lib/fallback-cafes";

@@ -23,7 +23,7 @@ export function buildOverpassQuery(): string {
   // 3. shop=coffee (roasters / coffee bars)
   // Both node and way so area-mapped places are included.
   return `
-[out:json][timeout:30];
+[out:json][timeout:40];
 (
   node["amenity"="cafe"](${bbox});
   way["amenity"="cafe"](${bbox});
