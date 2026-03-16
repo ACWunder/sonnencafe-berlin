@@ -138,50 +138,68 @@ function pointInPolygon(lat: number, lng: number, poly: [number, number][]): boo
   return inside;
 }
 
-// ─── shadow drawing ───────────────────────────────────────────────────────────
+// ─── shadow rendering ─────────────────────────────────────────────────────────
+
+// Compute viewport-culled shadow polygons into shadowStore for cafe status checks only.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function drawShadows(
-  L: any, layer: any, buildings: BuildingFeature[],
-  timeState: TimeState, shadowPane: string,
+function computeViewportShadows(
+  buildings: BuildingFeature[],
+  timeState: TimeState,
   shadowStore: [number, number][][],
 ) {
-  layer.clearLayers();
   shadowStore.length = 0;
-
   const date = new Date(`${timeState.date}T${timeState.time}:00`);
   const sunPos = getSunPosition(NEUBAU_CENTER[0], NEUBAU_CENTER[1], date);
-
   if (sunPos.altitudeDeg <= 0) {
-    // Night: cover entire district with a shadow rectangle
-    const nightPoly: [number, number][] = [
+    shadowStore.push([
       [DISTRICT_BOUNDS.south, DISTRICT_BOUNDS.west],
       [DISTRICT_BOUNDS.north, DISTRICT_BOUNDS.west],
       [DISTRICT_BOUNDS.north, DISTRICT_BOUNDS.east],
       [DISTRICT_BOUNDS.south, DISTRICT_BOUNDS.east],
-    ];
-    shadowStore.push(nightPoly);
-    L.polygon(nightPoly, {
-      color: "transparent",
-      fillColor: "#334155",
-      fillOpacity: 1.0,
-      interactive: false,
-      pane: shadowPane,
-    }).addTo(layer);
+    ]);
     return;
   }
-
-  buildings.forEach((b) => {
+  for (const b of buildings) {
     const shadow = calcShadowPolygon(b.polygon, b.height ?? FALLBACK_HEIGHT, sunPos.altitudeDeg, sunPos.azimuthDeg);
-    if (shadow.length < 3) return;
-    shadowStore.push(shadow);
-    L.polygon(shadow as [number, number][], {
-      color: "transparent",
-      fillColor: "#334155",
-      fillOpacity: 1.0,
-      interactive: false,
-      pane: shadowPane,
-    }).addTo(layer);
-  });
+    if (shadow.length >= 3) shadowStore.push(shadow as [number, number][]);
+  }
+}
+
+// Pre-bake ALL shadow polygons onto a district-sized canvas at a fixed reference zoom.
+// Called once per time change. Pan/zoom just CSS-transforms the canvas — zero JS per frame.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const SHADOW_RENDER_ZOOM = 16;
+function renderShadowMap(L: any, canvas: HTMLCanvasElement, timeState: TimeState, allBuildings: BuildingFeature[]) {
+  const nwPx = L.CRS.EPSG3857.latLngToPoint(L.latLng(DISTRICT_BOUNDS.north, DISTRICT_BOUNDS.west), SHADOW_RENDER_ZOOM);
+  const sePx = L.CRS.EPSG3857.latLngToPoint(L.latLng(DISTRICT_BOUNDS.south, DISTRICT_BOUNDS.east), SHADOW_RENDER_ZOOM);
+  const cw = Math.ceil(sePx.x - nwPx.x);
+  const ch = Math.ceil(sePx.y - nwPx.y);
+  canvas.width  = cw;
+  canvas.height = ch;
+
+  const ctx = canvas.getContext("2d")!;
+  const date = new Date(`${timeState.date}T${timeState.time}:00`);
+  const sunPos = getSunPosition(NEUBAU_CENTER[0], NEUBAU_CENTER[1], date);
+  ctx.fillStyle = "#334155";
+  if (sunPos.altitudeDeg <= 0) {
+    ctx.fillRect(0, 0, cw, ch);
+    return;
+  }
+  ctx.beginPath();
+  for (const b of allBuildings) {
+    const shadow = calcShadowPolygon(b.polygon, b.height ?? FALLBACK_HEIGHT, sunPos.altitudeDeg, sunPos.azimuthDeg);
+    if (shadow.length < 3) continue;
+    let first = true;
+    for (const [lat, lng] of shadow as [number, number][]) {
+      const pt = L.CRS.EPSG3857.latLngToPoint(L.latLng(lat, lng), SHADOW_RENDER_ZOOM);
+      const x = pt.x - nwPx.x;
+      const y = pt.y - nwPx.y;
+      if (first) { ctx.moveTo(x, y); first = false; }
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  }
+  ctx.fill();
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -191,8 +209,7 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
   const mapInstanceRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const buildingLayerRef = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const shadowLayerRef = useRef<any>(null);
+  const shadowMapRef = useRef<HTMLCanvasElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const cafeLayerRef = useRef<any>(null);
   const shadowPolygonsRef = useRef<[number, number][][]>([]);
@@ -227,6 +244,19 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       return bN >= s && bS <= n && bE >= w && bW <= e;
     });
   }
+  // Reposition the pre-baked shadow canvas over DISTRICT_BOUNDS at current zoom/pan.
+  // Called on zoomend + moveend; during gestures the pane CSS transform handles movement.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function positionShadowMap(map: any, L: any) {
+    const canvas = shadowMapRef.current;
+    if (!canvas || !map) return;
+    const nwPt = map.latLngToLayerPoint(L.latLng(DISTRICT_BOUNDS.north, DISTRICT_BOUNDS.west));
+    const sePt = map.latLngToLayerPoint(L.latLng(DISTRICT_BOUNDS.south, DISTRICT_BOUNDS.east));
+    canvas.style.width  = (sePt.x - nwPt.x) + "px";
+    canvas.style.height = (sePt.y - nwPt.y) + "px";
+    L.DomUtil.setPosition(canvas, nwPt);
+  }
+
   const timeStateRef = useRef(timeState);
   timeStateRef.current = timeState;
 
@@ -338,10 +368,14 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
   function rebuildLayers(L: any) {
     const buildings = Array.from(buildingCacheRef.current.values());
     const bLayer = buildingLayerRef.current;
-    const sLayer = shadowLayerRef.current;
-    if (!bLayer || !sLayer) return;
+    if (!bLayer) return;
 
-    drawShadows(L, sLayer, getViewportBuildings(buildings), timeStateRef.current, "shadowPane", shadowPolygonsRef.current);
+    const shadowCanvas = shadowMapRef.current;
+    if (shadowCanvas) {
+      renderShadowMap(L, shadowCanvas, timeStateRef.current, buildings);
+      positionShadowMap(mapInstanceRef.current, L);
+    }
+    computeViewportShadows(getViewportBuildings(buildings), timeStateRef.current, shadowPolygonsRef.current);
     updateCafeDots(L);
 
     bLayer.clearLayers();
@@ -436,7 +470,8 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       // out) before any edge is exposed — without needing any canvas draws
       // during the gesture (which would block the main thread and cause jank).
       (map as any)._paneRenderers = (map as any)._paneRenderers ?? {};
-      (["greenPane", "shadowPane", "buildingPane", "cafePane"] as const).forEach((pane) => {
+      // shadowPane uses a raw canvas overlay (shadowMapRef) — no Leaflet renderer needed.
+      (["greenPane", "buildingPane", "cafePane"] as const).forEach((pane) => {
         const r = L.canvas({ padding: 0.6, pane });
         (map as any)._paneRenderers[pane] = r;
         r.addTo(map);
@@ -448,9 +483,13 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
         { color: "transparent", fillColor: "#fde68a", fillOpacity: 0.38, interactive: false }
       ).addTo(map);
 
-      // Shadows first, buildings on top → shadows only visible on open ground
-      const shadowLayer = L.layerGroup().addTo(map);
-      shadowLayerRef.current = shadowLayer;
+      // Shadow map: pre-baked canvas positioned over DISTRICT_BOUNDS.
+      // Shadows rendered once per time change; pan/zoom handled by CSS transform.
+      const shadowCanvas = document.createElement("canvas");
+      shadowCanvas.style.position = "absolute";
+      shadowCanvas.style.pointerEvents = "none";
+      map.getPane("shadowPane")!.appendChild(shadowCanvas);
+      shadowMapRef.current = shadowCanvas;
 
       const buildingLayer = L.layerGroup().addTo(map);
       buildingLayerRef.current = buildingLayer;
@@ -512,25 +551,24 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
         });
       });
 
-      // Helper: rebuild shadow layer for the current viewport, then repaint.
-      const rebuildShadows = () => {
-        const sLayer = shadowLayerRef.current;
-        if (!sLayer) return;
+      // Reposition shadow canvas on zoom/pan settle, refresh viewport cafe status.
+      const refreshShadows = () => {
+        positionShadowMap(map, L);
         const all = Array.from(buildingCacheRef.current.values());
-        drawShadows(L, sLayer, getViewportBuildings(all), timeStateRef.current, "shadowPane", shadowPolygonsRef.current);
-        redrawPanes();
+        computeViewportShadows(getViewportBuildings(all), timeStateRef.current, shadowPolygonsRef.current);
       };
 
-      // Single clean repaint after zoom settles + rebuild shadows for new viewport.
+      // Single clean repaint after zoom settles.
       map.on("zoomend", () => {
         isZooming = false;
+        refreshShadows();
         updateCafeDots(L, false);
-        rebuildShadows();
+        redrawPanes();
       });
 
-      // After pan ends, rebuild shadow polygons for the new viewport area.
+      // Reposition + refresh viewport shadows after pan ends.
       map.on("moveend", () => {
-        if (!isZooming) rebuildShadows();
+        if (!isZooming) refreshShadows();
       });
 
       // Location pane below labels
@@ -560,15 +598,14 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
   // ── redraw shadows when time changes ──────────────────────────────────────
   // Redraw shadows + cafe dots when time changes
   useEffect(() => {
-    const sLayer = shadowLayerRef.current;
-    if (!sLayer) return;
+    const canvas = shadowMapRef.current;
+    if (!canvas) return;
     import("leaflet").then((L) => {
       const all = Array.from(buildingCacheRef.current.values());
-      drawShadows(L, sLayer, getViewportBuildings(all), timeState, "shadowPane", shadowPolygonsRef.current);
+      renderShadowMap(L, canvas, timeState, all);
+      positionShadowMap(mapInstanceRef.current, L);
+      computeViewportShadows(getViewportBuildings(all), timeState, shadowPolygonsRef.current);
       updateCafeDots(L);
-      // Explicit repaint since Leaflet's internal moveend._update already fired.
-      const pr = (mapInstanceRef.current as any)?._paneRenderers ?? {};
-      Object.values(pr).forEach((r: any) => r?._update?.());
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeState]);
