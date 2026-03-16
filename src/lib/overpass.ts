@@ -23,7 +23,7 @@ export function buildOverpassQuery(): string {
   // 3. shop=coffee (roasters / coffee bars)
   // Both node and way so area-mapped places are included.
   return `
-[out:json][timeout:40];
+[out:json][timeout:30];
 (
   node["amenity"="cafe"](${bbox});
   way["amenity"="cafe"](${bbox});
@@ -45,7 +45,7 @@ export async function fetchCafesFromOverpass(): Promise<Cafe[]> {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: `data=${encodeURIComponent(query)}`,
-    cache: "no-store", // Don't use Next.js fetch cache — we handle caching in the API route
+    next: { revalidate: 3600 }, // Cache for 1 hour in Next.js
   });
 
   if (!response.ok) {
