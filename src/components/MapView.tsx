@@ -488,6 +488,9 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       const shadowCanvas = document.createElement("canvas");
       shadowCanvas.style.position = "absolute";
       shadowCanvas.style.pointerEvents = "none";
+      // leaflet-zoom-animated enables the CSS transition so the canvas
+      // participates in pinch-zoom animation exactly like L.ImageOverlay.
+      L.DomUtil.addClass(shadowCanvas, "leaflet-zoom-animated");
       map.getPane("shadowPane")!.appendChild(shadowCanvas);
       shadowMapRef.current = shadowCanvas;
 
@@ -569,6 +572,19 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       // Reposition + refresh viewport shadows after pan ends.
       map.on("moveend", () => {
         if (!isZooming) refreshShadows();
+      });
+
+      // Animate shadow canvas during pinch zoom — same pattern as L.ImageOverlay.
+      // zoomanim fires once at gesture start; CSS transition (leaflet-zoom-animated)
+      // handles the smooth interpolation. setTransform(offset, scale) is the
+      // exact same call Leaflet uses internally for image overlays.
+      map.on("zoomanim", (e: any) => {
+        const canvas = shadowMapRef.current;
+        if (!canvas) return;
+        const scale = map.getZoomScale(e.zoom);
+        const offset = (map as any)._latLngToNewLayerPoint(
+          [DISTRICT_BOUNDS.north, DISTRICT_BOUNDS.west], e.zoom, e.center);
+        L.DomUtil.setTransform(canvas, offset, scale);
       });
 
       // Location pane below labels
