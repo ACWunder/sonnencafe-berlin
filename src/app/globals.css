@@ -46,22 +46,14 @@ body {
 .leaflet-container {
   font-family: 'DM Sans', sans-serif !important;
   border-radius: 12px;
-  /* Match the visual appearance of CARTO light tiles + amber overlay so
-     unloaded tile areas are indistinguishable from loaded ones            */
-  background: #fbf2ce !important;
+  /* CARTO light tile base color (~#fafaf8). The amber district overlay
+     (fillOpacity 0.38) sits above tiles on overlayPane. Setting this to
+     the raw tile color means: blank-area background → overlay once →
+     same result as loaded-tile → overlay once. No double-yellow flash.   */
+  background: #fafaf8 !important;
 }
 
-/* Eliminate tile fade-in: tiles appear at full opacity instantly.
-   Combined with the background-color match above this removes the
-   yellow/white flash when panning or zooming.                             */
-.leaflet-fade-anim .leaflet-tile {
-  transition: none !important;
-  opacity: 1 !important;
-}
-.leaflet-fade-anim .leaflet-popup {
-  transition: opacity 0.2s linear;
-}
-/* Tile containers during zoom animation */
+/* GPU-accelerate tile containers during zoom */
 .leaflet-zoom-anim .leaflet-tile-container {
   will-change: transform;
 }

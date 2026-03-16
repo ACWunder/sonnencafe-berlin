@@ -383,7 +383,8 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
         zoomSnap: 0.5,        // Smoother zoom steps
         zoomDelta: 0.5,
         wheelPxPerZoomLevel: 80,
-        fadeAnimation: false, // Tiles appear instantly — no white/yellow flash
+        // fadeAnimation defaults to true — keeps old tiles visible as placeholders
+        // while new zoom-level tiles load, so background is rarely exposed
       });
 
       map.fitBounds(districtBounds);
