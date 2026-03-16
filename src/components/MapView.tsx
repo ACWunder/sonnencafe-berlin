@@ -578,9 +578,12 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
         redrawPanes();
       });
 
-      // Reposition + refresh viewport shadows after pan ends.
+      // Reposition + refresh viewport shadows after pan ends, then redraw dots.
       map.on("moveend", () => {
-        if (!isZooming) refreshShadows();
+        if (!isZooming) {
+          refreshShadows();
+          updateCafeDots(L, false);
+        }
       });
 
       // Reposition shadow canvas on every zoom step during pinch gesture.
