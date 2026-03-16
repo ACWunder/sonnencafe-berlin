@@ -1,6 +1,6 @@
 // Run with: node scripts/fetch-green-areas.mjs
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
-const BBOX = "48.175,16.333,48.2154,16.375";
+const BBOX = "48.175,16.333,48.230,16.375";
 
 const query = `
 [out:json][timeout:60];

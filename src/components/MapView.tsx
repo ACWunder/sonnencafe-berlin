@@ -12,7 +12,7 @@ import type { BuildingFeature } from "@/app/api/buildings/route";
 // — must match overpass.ts VIENNA_BBOX exactly
 const DISTRICT_BOUNDS = {
   south: 48.175, west: 16.333,
-  north: 48.2154, east: 16.375,
+  north: 48.230, east: 16.375,
 } as const;
 
 const MAP_CENTER: [number, number] = [

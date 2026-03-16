@@ -8,7 +8,7 @@ const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 export const VIENNA_BBOX = {
   south: 48.175,
   west: 16.333,
-  north: 48.2154,
+  north: 48.230,
   east: 16.375,
 };
 
