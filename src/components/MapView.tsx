@@ -229,13 +229,21 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       const color = inShadow ? "#374151" : "#ea580c";
 
       const marker = L.circleMarker([cafe.lat, cafe.lng], {
-        radius: isSelected ? 7 : 4,
-        color: isSelected ? "#ffffff" : "transparent",
+        radius: isSelected ? 11 : 9,
+        color: isSelected ? "#ffffff" : "#ea580c",
         fillColor: color,
         fillOpacity: 1,
-        weight: isSelected ? 2 : 10,
+        weight: isSelected ? 2.5 : 0,
         interactive: true,
         pane: "cafePane",
+      });
+
+      // Force pointer-events:all on the SVG element so the full circle
+      // is tappable on iOS regardless of stroke/fill transparency
+      marker.on("add", () => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const el = (marker as any).getElement?.();
+        if (el) el.style.pointerEvents = "all";
       });
 
       marker.bindTooltip(cafe.name, {
