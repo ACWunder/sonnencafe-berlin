@@ -451,6 +451,25 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
         })
         .catch(() => {});
 
+      // Keep canvas layers (buildings, shadows, green areas) visible while
+      // the user is still dragging. Leaflet only calls _update() on canvas
+      // renderers on moveend, so vector layers vanish mid-gesture once the
+      // pre-drawn padding area is exceeded. We force a reposition+redraw
+      // on every animation frame during move — RAF-throttled so it runs at
+      // most once per frame and never queues up.
+      let moveRafId: number | null = null;
+      map.on("move", () => {
+        if (moveRafId !== null) return;
+        moveRafId = requestAnimationFrame(() => {
+          moveRafId = null;
+          // Leaflet auto-creates one canvas renderer per custom pane
+          // (stored in map._paneRenderers). _update() repositions the
+          // canvas and redraws all its layers at the current viewport.
+          const pr: Record<string, unknown> = (map as any)._paneRenderers ?? {};
+          Object.values(pr).forEach((r: any) => r?._update?.());
+        });
+      });
+
       // Redraw markers at new zoom-dependent size on every zoom change
       map.on("zoomend", () => updateCafeDots(L, false));
 
