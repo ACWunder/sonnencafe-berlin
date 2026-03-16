@@ -442,7 +442,7 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       <div ref={mapRef} className="w-full h-full" />
 
       {fetching && (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] bg-white/80 backdrop-blur-xl rounded-full border border-zinc-100 shadow-lg shadow-zinc-200/40 px-4 py-1.5 flex items-center gap-2 font-body text-zinc-500" style={{ fontSize: "12px" }}>
+        <div className="absolute top-3 left-3 z-[1000] bg-white/80 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-lg shadow-zinc-200/30 px-3.5 py-2 flex items-center gap-2 font-body text-zinc-500" style={{ fontSize: "12px" }}>
           <div className="w-3 h-3 border-[1.5px] border-amber-400 border-t-transparent rounded-full animate-spin" />
           Gebäude laden…
         </div>
@@ -498,12 +498,12 @@ function SunCompass({ timeState }: { timeState: TimeState }) {
 
   return (
     <div
-      className="absolute z-[500] bg-white/80 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-lg shadow-zinc-200/40 p-2"
-      style={{ bottom: "80px", right: "12px" }}
+      className="absolute z-[500] bg-white/90 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-lg shadow-zinc-200/40 p-3"
+      style={{ bottom: "24px", right: "12px" }}
     >
       <div
-        className="text-center text-stone-400 font-body uppercase tracking-widest mb-1"
-        style={{ fontSize: "8px" }}
+        className="text-center text-zinc-400 font-body uppercase tracking-widest mb-2"
+        style={{ fontSize: "8px", fontWeight: 700, letterSpacing: "0.1em" }}
       >
         Sonne
       </div>
@@ -542,11 +542,6 @@ function SunCompass({ timeState }: { timeState: TimeState }) {
           <text x={r} y={r + 5} textAnchor="middle" fontSize="16" fill="#94a3b8">🌙</text>
         )}
       </svg>
-      {isUp && (
-        <div className="text-center text-stone-400 mt-0.5" style={{ fontSize: "9px" }}>
-          {pos.altitudeDeg.toFixed(0)}° hoch · {pos.azimuthDeg.toFixed(0)}° Az
-        </div>
-      )}
     </div>
   );
 }
