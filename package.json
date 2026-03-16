@@ -1,0 +1,34 @@
+{
+  "name": "sonnencafe-wien",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "14.2.3",
+    "react": "^18",
+    "react-dom": "^18",
+    "leaflet": "^1.9.4",
+    "react-leaflet": "^4.2.1",
+    "suncalc": "^1.9.0",
+    "date-fns": "^3.6.0",
+    "lucide-react": "^0.379.0"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@types/leaflet": "^1.9.12",
+    "@types/suncalc": "^1.9.2",
+    "tailwindcss": "^3.4.1",
+    "postcss": "^8",
+    "autoprefixer": "^10",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.3"
+  }
+}

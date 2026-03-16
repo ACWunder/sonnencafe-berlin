@@ -1,0 +1,153 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --sun-color: #f59e0b;
+  --sun-light: #fef3c7;
+  --partial-color: #fb8c00;
+  --partial-light: #fff3e0;
+  --shade-color: #78909c;
+  --shade-light: #eceff1;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background-color: #fafaf9;
+  color: #1c1917;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f5f5f4;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d6d3d1;
+  border-radius: 2px;
+}
+
+/* Leaflet overrides */
+.leaflet-container {
+  font-family: 'DM Sans', sans-serif !important;
+  border-radius: 12px;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 10px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12) !important;
+  border: 1px solid #e7e5e4 !important;
+}
+
+.leaflet-popup-tip {
+  background: white !important;
+}
+
+/* Custom marker styles */
+.cafe-marker-sunny {
+  background: #f59e0b;
+  border: 2px solid #d97706;
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.5);
+}
+
+.cafe-marker-partial {
+  background: #fb8c00;
+  border: 2px solid #e65100;
+  box-shadow: 0 2px 8px rgba(251, 140, 0, 0.4);
+}
+
+.cafe-marker-shady {
+  background: #78909c;
+  border: 2px solid #546e7a;
+  box-shadow: 0 2px 6px rgba(120, 144, 156, 0.4);
+}
+
+/* Cafe tooltip */
+.leaflet-cafe-tooltip {
+  background: white;
+  border: 1px solid #e7e5e4 !important;
+  border-radius: 6px !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+  font-family: 'DM Sans', sans-serif !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: #1c1917 !important;
+  padding: 3px 8px !important;
+  white-space: nowrap;
+}
+.leaflet-cafe-tooltip::before { display: none !important; }
+
+/* Status badge animations */
+@keyframes sunPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+}
+
+.status-sunny {
+  animation: sunPulse 2s ease-in-out infinite;
+}
+
+/* Cafe card enter animation */
+@keyframes cafeCardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.cafe-card-enter {
+  animation: cafeCardEnter 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Sun pulse dot */
+@keyframes sunDotPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.sun-pulse {
+  animation: sunDotPulse 2s ease-in-out infinite;
+}
+
+/* Smooth sidebar scrollbar */
+aside ::-webkit-scrollbar {
+  width: 3px;
+}
+aside ::-webkit-scrollbar-thumb {
+  background: #e4e4e7;
+  border-radius: 2px;
+}
+aside ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Mobile bottom sheet */
+@media (max-width: 767px) {
+  .bottom-sheet-list {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Prevent map interaction when touching the sheet */
+  .bottom-sheet {
+    touch-action: pan-y;
+  }
+}
