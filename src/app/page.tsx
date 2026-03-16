@@ -148,30 +148,25 @@ export default function Home() {
     <div className="flex flex-col h-screen overflow-hidden bg-[#f7f6f3]">
 
       {/* ── Header ── */}
-      <header className="bg-white/80 backdrop-blur-xl border-b border-zinc-100 px-5 py-2.5 flex items-center gap-3 shrink-0 z-10 flex-wrap md:flex-nowrap">
+      <header className="bg-white/80 backdrop-blur-xl border-b border-zinc-100 px-3 py-2 flex items-center gap-2 shrink-0 z-10 overflow-hidden">
         {/* Brand */}
-        <div className="flex items-center gap-2.5 mr-1">
-          <div className="w-8 h-8 rounded-[10px] bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-sm shadow-amber-200">
-            <Sun className="w-4.5 h-4.5 text-white" strokeWidth={2.5} />
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="w-7 h-7 rounded-[8px] bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-sm shadow-amber-200">
+            <Sun className="w-4 h-4 text-white" strokeWidth={2.5} />
           </div>
-          <div>
-            <h1 className="font-display font-bold text-zinc-900 text-[14px] leading-none tracking-tight">
-              Sonnencafe Wien
-            </h1>
-            <p className="text-[10px] text-zinc-400 font-body leading-none mt-[3px] tracking-wide">
-              Bezirke 6 · 7 · 8
-            </p>
-          </div>
+          <h1 className="font-display font-bold text-zinc-900 text-[13px] leading-none tracking-tight whitespace-nowrap">
+            Sonnencafe Wien
+          </h1>
         </div>
 
-        <div className="w-px h-5 bg-zinc-100 mx-1 hidden md:block" />
+        <div className="w-px h-4 bg-zinc-100 mx-0.5 shrink-0" />
 
         {/* Date */}
         <input
           type="date"
           value={timeState.date}
           onChange={(e) => setTimeState((s) => ({ ...s, date: e.target.value }))}
-          className="text-[12px] font-body text-zinc-600 border border-zinc-200 rounded-[10px] px-2.5 py-1.5 bg-zinc-50/80 focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-300 transition-all cursor-pointer"
+          className="text-[11px] font-body text-zinc-600 border border-zinc-200 rounded-[8px] px-2 py-1 bg-zinc-50/80 focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-300 transition-all cursor-pointer min-w-0 shrink"
         />
 
         {/* Time */}
@@ -179,27 +174,27 @@ export default function Home() {
           type="time"
           value={timeState.time}
           onChange={(e) => setTimeState((s) => ({ ...s, time: e.target.value }))}
-          className="text-[12px] font-body text-zinc-600 border border-zinc-200 rounded-[10px] px-2.5 py-1.5 bg-zinc-50/80 focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-300 transition-all cursor-pointer"
+          className="text-[11px] font-body text-zinc-600 border border-zinc-200 rounded-[8px] px-2 py-1 bg-zinc-50/80 focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-300 transition-all cursor-pointer min-w-0 shrink"
         />
 
-        {/* Now button */}
+        {/* Now button — icon only on mobile, icon+text on desktop */}
         <button
           onClick={() => {
             const now = new Date();
             setTimeState({ date: format(now, "yyyy-MM-dd"), time: format(now, "HH:mm") });
           }}
-          className="flex items-center gap-1.5 bg-gradient-to-br from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white text-[12px] font-body font-semibold px-3.5 py-1.5 rounded-[10px] transition-all shadow-sm shadow-amber-200/60 hover:shadow-md hover:shadow-amber-300/40 active:scale-95"
+          className="flex items-center gap-1 bg-gradient-to-br from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white font-body font-semibold rounded-[8px] transition-all shadow-sm shadow-amber-200/60 active:scale-95 shrink-0 px-2 py-1"
         >
           <Sun className="w-3 h-3" />
-          Jetzt
+          <span className="text-[11px] hidden sm:inline">Jetzt</span>
         </button>
 
         <button
           onClick={() => setShowImpressum(true)}
-          className="ml-auto text-zinc-300 hover:text-zinc-500 transition-colors p-1"
+          className="ml-auto text-zinc-300 hover:text-zinc-500 transition-colors p-1 shrink-0"
           title="Impressum"
         >
-          <Info className="w-4 h-4" />
+          <Info className="w-3.5 h-3.5" />
         </button>
       </header>
 
@@ -237,9 +232,22 @@ export default function Home() {
                   arthur.wunder@web.de
                 </a>
               </div>
-              <p className="text-[11px] text-zinc-300 pt-1">
-                Kartendaten © OpenStreetMap-Mitwirkende
-              </p>
+              <div className="pt-2 border-t border-zinc-50 space-y-0.5">
+                <p className="text-[11px] text-zinc-400 uppercase tracking-wide font-medium mb-1">Datenquellen</p>
+                <p className="text-[11px] text-zinc-400">
+                  Kartendaten ©{" "}
+                  <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="text-amber-500 hover:text-amber-600">OpenStreetMap</a>
+                  {" "}-Mitwirkende
+                </p>
+                <p className="text-[11px] text-zinc-400">
+                  Kartenstil ©{" "}
+                  <a href="https://carto.com/" target="_blank" rel="noopener noreferrer" className="text-amber-500 hover:text-amber-600">CARTO</a>
+                </p>
+                <p className="text-[11px] text-zinc-400">
+                  Kartenrendering via{" "}
+                  <a href="https://leafletjs.com" target="_blank" rel="noopener noreferrer" className="text-amber-500 hover:text-amber-600">Leaflet</a>
+                </p>
+              </div>
             </div>
           </div>
         </div>

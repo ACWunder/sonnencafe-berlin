@@ -332,13 +332,16 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       });
 
       map.fitBounds(districtBounds);
+
+      // Zoom control only on desktop — hidden via CSS on mobile
       L.control.zoom({ position: "bottomright" }).addTo(map);
 
+      // Attribution moved to Impressum in the UI
       L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-        attribution:
-          '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/">CARTO</a>',
+        attribution: "",
         maxZoom: 19,
       }).addTo(map);
+      map.attributionControl.remove();
 
       // Custom panes with fixed z-indices → shadows always below buildings,
       // regardless of the order polygons are added to the SVG DOM.
@@ -484,7 +487,7 @@ function SunCompass({ timeState }: { timeState: TimeState }) {
   const pos = getSunPosition(NEUBAU_CENTER[0], NEUBAU_CENTER[1], date);
   const isUp = pos.altitudeDeg > 0;
 
-  const size = 90;
+  const size = 72;
   const r = size / 2;
   const pad = 10;
   const innerR = r - pad;

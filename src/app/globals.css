@@ -150,4 +150,14 @@ aside ::-webkit-scrollbar-track {
   .bottom-sheet {
     touch-action: pan-y;
   }
+
+  /* Hide zoom controls on mobile */
+  .leaflet-control-zoom {
+    display: none !important;
+  }
+}
+
+/* Hide Leaflet attribution everywhere (moved to Impressum) */
+.leaflet-control-attribution {
+  display: none !important;
 }
