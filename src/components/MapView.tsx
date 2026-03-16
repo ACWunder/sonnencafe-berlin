@@ -354,6 +354,10 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       const map = L.map(mapRef.current, {
         zoomControl: false,
         minZoom: 14,
+        preferCanvas: true,   // Canvas renderer: far faster for 12k+ polygons
+        zoomSnap: 0.5,        // Smoother zoom steps
+        zoomDelta: 0.5,
+        wheelPxPerZoomLevel: 80,
       });
 
       map.fitBounds(districtBounds);
@@ -361,12 +365,18 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       // Zoom control only on desktop — hidden via CSS on mobile
       L.control.zoom({ position: "bottomright" }).addTo(map);
 
-      // Attribution moved to Impressum in the UI
-      // Base map without labels — labels are added on top of all overlays
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
+      // Tile options: load continuously while panning, buffer extra tiles
+      const tileOptions = {
         attribution: "",
         maxZoom: 19,
-      }).addTo(map);
+        keepBuffer: 6,           // Pre-load 6 tiles outside viewport in each direction
+        updateWhenIdle: false,   // Load tiles while panning, not just when stopped
+        updateWhenZooming: false,
+      };
+
+      // Attribution moved to Impressum in the UI
+      // Base map without labels — labels are added on top of all overlays
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", tileOptions).addTo(map);
       map.attributionControl.remove();
 
       // Custom panes with fixed z-indices → shadows always below buildings,
@@ -413,8 +423,7 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       labelsPane.style.zIndex = "404";
       labelsPane.style.pointerEvents = "none";
       L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png", {
-        attribution: "",
-        maxZoom: 19,
+        ...tileOptions,
         pane: "labelsPane",
       }).addTo(map);
     });
