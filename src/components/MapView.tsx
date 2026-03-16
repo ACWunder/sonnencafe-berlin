@@ -209,6 +209,24 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
 
   // All buildings ever fetched, keyed by OSM id → no duplicates when viewports overlap
   const buildingCacheRef = useRef<Map<number, BuildingFeature>>(new Map());
+
+  // Return only buildings whose bounding box overlaps the current padded viewport.
+  // pad(1.0) = 100% of viewport per side — covers canvas padding (0.6×) + max shadow
+  // extension (~250 m). At zoom > 15 this yields ~200-500 buildings vs 17k total.
+  function getViewportBuildings(all: BuildingFeature[]): BuildingFeature[] {
+    const map = mapInstanceRef.current;
+    if (!map || all.length === 0) return all;
+    const b = map.getBounds().pad(1.0);
+    const s = b.getSouth(), n = b.getNorth(), w = b.getWest(), e = b.getEast();
+    return all.filter((bld) => {
+      let bS = Infinity, bN = -Infinity, bW = Infinity, bE = -Infinity;
+      for (const [lat, lng] of bld.polygon) {
+        if (lat < bS) bS = lat; if (lat > bN) bN = lat;
+        if (lng < bW) bW = lng; if (lng > bE) bE = lng;
+      }
+      return bN >= s && bS <= n && bE >= w && bW <= e;
+    });
+  }
   const timeStateRef = useRef(timeState);
   timeStateRef.current = timeState;
 
@@ -323,7 +341,7 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
     const sLayer = shadowLayerRef.current;
     if (!bLayer || !sLayer) return;
 
-    drawShadows(L, sLayer, buildings, timeStateRef.current, "shadowPane", shadowPolygonsRef.current);
+    drawShadows(L, sLayer, getViewportBuildings(buildings), timeStateRef.current, "shadowPane", shadowPolygonsRef.current);
     updateCafeDots(L);
 
     bLayer.clearLayers();
@@ -494,11 +512,25 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
         });
       });
 
-      // Single clean repaint after zoom settles.
+      // Helper: rebuild shadow layer for the current viewport, then repaint.
+      const rebuildShadows = () => {
+        const sLayer = shadowLayerRef.current;
+        if (!sLayer) return;
+        const all = Array.from(buildingCacheRef.current.values());
+        drawShadows(L, sLayer, getViewportBuildings(all), timeStateRef.current, "shadowPane", shadowPolygonsRef.current);
+        redrawPanes();
+      };
+
+      // Single clean repaint after zoom settles + rebuild shadows for new viewport.
       map.on("zoomend", () => {
         isZooming = false;
         updateCafeDots(L, false);
-        redrawPanes();
+        rebuildShadows();
+      });
+
+      // After pan ends, rebuild shadow polygons for the new viewport area.
+      map.on("moveend", () => {
+        if (!isZooming) rebuildShadows();
       });
 
       // Location pane below labels
@@ -531,9 +563,12 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
     const sLayer = shadowLayerRef.current;
     if (!sLayer) return;
     import("leaflet").then((L) => {
-      const buildings = Array.from(buildingCacheRef.current.values());
-      drawShadows(L, sLayer, buildings, timeState, "shadowPane", shadowPolygonsRef.current);
+      const all = Array.from(buildingCacheRef.current.values());
+      drawShadows(L, sLayer, getViewportBuildings(all), timeState, "shadowPane", shadowPolygonsRef.current);
       updateCafeDots(L);
+      // Explicit repaint since Leaflet's internal moveend._update already fired.
+      const pr = (mapInstanceRef.current as any)?._paneRenderers ?? {};
+      Object.values(pr).forEach((r: any) => r?._update?.());
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeState]);
