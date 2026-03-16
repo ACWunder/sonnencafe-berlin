@@ -263,6 +263,7 @@ export default function Home() {
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onTouchEnd={(e) => { e.preventDefault(); setSidebarOpen(false); }}
             onClick={() => setSidebarOpen(false)}
           />
           {/* Panel */}
