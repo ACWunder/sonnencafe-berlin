@@ -228,8 +228,13 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       const isSelected = cafe.id === selectedId;
       const color = inShadow ? "#374151" : "#ea580c";
 
+      // Zoom-dependent radius: small when zoomed out, larger when zoomed in
+      const zoom = mapInstanceRef.current?.getZoom() ?? 15;
+      const baseRadius = zoom >= 17 ? 5 : zoom >= 16 ? 4 : 3;
+      const radius = isSelected ? baseRadius + 3 : baseRadius;
+
       const marker = L.circleMarker([cafe.lat, cafe.lng], {
-        radius: isSelected ? 8 : 5,
+        radius,
         color: isSelected ? "#ffffff" : "#ea580c",
         fillColor: color,
         fillOpacity: 1,
@@ -415,6 +420,9 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
           fetchForBbox(L, clampedBbox());
         }, 600);
       });
+
+      // Redraw markers at new zoom-dependent size on every zoom change
+      map.on("zoomend", () => updateCafeDots(L, false));
     });
 
     return () => {
