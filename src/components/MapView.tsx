@@ -378,12 +378,13 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
 
       // Custom panes with fixed z-indices → shadows always below buildings,
       // regardless of the order polygons are added to the SVG DOM.
+      // z-order: shadows → buildings → labels → cafes (top)
       const shadowPaneEl = map.createPane("shadowPane");
       shadowPaneEl.style.zIndex = "401";
       shadowPaneEl.style.opacity = "0.55";
       map.createPane("buildingPane").style.zIndex = "402";
       const cafePaneEl = map.createPane("cafePane");
-      cafePaneEl.style.zIndex = "403";
+      cafePaneEl.style.zIndex = "405"; // above labels
       cafePaneEl.style.pointerEvents = "auto";
 
       // Yellow sunny overlay – only covers districts 6/7/8, not the whole world
@@ -428,13 +429,13 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       // Redraw markers at new zoom-dependent size on every zoom change
       map.on("zoomend", () => updateCafeDots(L, false));
 
-      // Location pane above cafes
+      // Location pane below labels
       const locationPane = map.createPane("locationPane");
-      locationPane.style.zIndex = "404";
+      locationPane.style.zIndex = "403";
 
-      // Labels pane on top of everything — street names always readable
+      // Labels pane above buildings/shadows, below cafes
       const labelsPane = map.createPane("labelsPane");
-      labelsPane.style.zIndex = "405";
+      labelsPane.style.zIndex = "404";
       labelsPane.style.pointerEvents = "none";
       L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png", {
         attribution: "",
