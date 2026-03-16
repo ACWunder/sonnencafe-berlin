@@ -1,160 +1,109 @@
-# ☀️ SonnenCafé Wien
+# ☀️ Sonnencafe Wien
 
-**Finde Cafés und Spots in Wien, die genau jetzt oder zur gewünschten Uhrzeit in der Sonne liegen.**
+**Welches Café in Wien liegt gerade in der Sonne?**
 
-Eine interaktive Web-App mit Karte, Sonnenstandberechnung und Schatten-Heuristik – vollständig kostenlos und mit Open-Source-Tools.
+Sonnencafe Wien berechnet in Echtzeit, welche Cafés im 6., 7. und 8. Bezirk gerade in der Sonne liegen – basierend auf echten Gebäudedaten aus OpenStreetMap und präziser Schattenberechnung für jede Uhrzeit und jeden Tag.
 
----
-
-## Screenshots
-
-- Karte von Wien mit farbigen Markern (sonnig = orange/gelb, schattig = grau)
-- Linke Sidebar mit Filter und Café-Liste
-- Detail-Panel beim Klick auf einen Spot
+🌐 **[sonnencafe-wien.vercel.app](https://sonnencafe-wien.vercel.app)**
 
 ---
 
-## Installation
+## Features
 
-### Voraussetzungen
+- **Echtzeit-Schattenberechnung** — Gebäudepolygone aus OSM werden mit dem aktuellen Sonnenstand (Azimut + Höhe via SunCalc) zu Schattenpolygonen projiziert
+- **Echte Gebäudehöhen** — aus OSM-Tags (`height`, `building:levels`), Fallback 18 m
+- **Café-Daten live** — Overpass API mit `amenity=cafe`, `shop=coffee` und Kaffeehaus-Restaurants
+- **Sonnenstunden pro Café** — wie lange liegt ein Café noch in der Sonne? (bis zu 4 h voraus, 10-Minuten-Schritte)
+- **Tages-Zeitstrahl** — visueller Balken von Sonnenaufgang bis -untergang für jedes Café
+- **Zeitreise** — Datum und Uhrzeit frei wählbar
+- **PWA** — als App installierbar (iOS & Android), inkl. Install-Banner mit Anleitung
+- **Mobile-optimiert** — Hamburger-Sidebar, Google-Maps-Style Café-Karte, Touch-Gesten (wischen zum Schließen)
 
-- Node.js >= 18
-- npm >= 9
+---
 
-### Setup
+## Wie funktioniert die Schattenberechnung?
+
+```
+Sonnenstand (SunCalc)
+    → Azimut + Höhenwinkel
+    → Schattenvektor pro Gebäude
+    → Konvexe Hülle des projizierten Schattenpolygons
+    → Ray-Casting: liegt der Café-Punkt im Schatten?
+```
+
+1. Für jeden Zeitschritt wird der Sonnenstand (Azimut, Höhe) berechnet
+2. Jedes Gebäude aus OSM wird mit seiner Höhe entlang des Sonnenvektors projiziert
+3. Das entstandene Schattenpolygon wird mit dem Monotone-Chain-Algorithmus zur konvexen Hülle
+4. Per Ray-Casting-Test wird geprüft, ob ein Café-Punkt (10 m in Sonnenrichtung versetzt) im Schatten liegt
+5. Das passiert für alle Cafés in 15er-Chunks (nicht-blockierend) und für den ganzen Tag (20-Minuten-Slots)
+
+---
+
+## Tech Stack
+
+| | |
+|---|---|
+| **Framework** | [Next.js 14](https://nextjs.org/) — App Router, API Routes, ImageResponse |
+| **Karte** | [Leaflet](https://leafletjs.com/) mit benutzerdefinierten SVG-Panes |
+| **Tiles** | [CARTO Light](https://carto.com/basemaps/) via OpenStreetMap |
+| **Gebäude & Cafés** | [Overpass API](https://overpass-api.de/) (OSM) |
+| **Astronomie** | [SunCalc](https://github.com/mourner/suncalc) |
+| **Styling** | [Tailwind CSS](https://tailwindcss.com/), Playfair Display + DM Sans |
+| **Icons** | [Lucide](https://lucide.dev/) |
+| **Hosting** | [Vercel](https://vercel.com/) |
+
+Keine kostenpflichtigen APIs. Kein Google Maps. Alles Open Source.
+
+---
+
+## Lokale Entwicklung
 
 ```bash
-git clone https://github.com/dein-user/sonnencafe-wien.git
+git clone https://github.com/ACWunder/sonnencafe-wien.git
 cd sonnencafe-wien
 npm install
 npm run dev
 ```
 
-Die App ist dann erreichbar unter: **http://localhost:3000**
-
----
-
-## Verwendete Bibliotheken
-
-| Library | Zweck |
-|--------|-------|
-| [Next.js 14](https://nextjs.org/) | React Framework, App Router, API Routes |
-| [TypeScript](https://www.typescriptlang.org/) | Typsicherheit |
-| [Tailwind CSS](https://tailwindcss.com/) | Utility-first Styling |
-| [Leaflet](https://leafletjs.com/) + [react-leaflet](https://react-leaflet.js.org/) | Interaktive Karte (OSM-Tiles) |
-| [SunCalc](https://github.com/mourner/suncalc) | Sonnenstand-Berechnung (Azimut + Höhe) |
-| [date-fns](https://date-fns.org/) | Datum-Formatierung |
-| [lucide-react](https://lucide.dev/) | Icons |
-| [OpenStreetMap / Overpass API](https://overpass-api.de/) | POI-Daten (Cafés, Restaurants, Bars) |
-
-**Keine kostenpflichtigen APIs. Keine Google Maps.**
+→ [http://localhost:3000](http://localhost:3000)
 
 ---
 
 ## Projektstruktur
 
 ```
-sonnencafe-wien/
-├── src/
-│   ├── app/
-│   │   ├── api/
-│   │   │   └── cafes/
-│   │   │       └── route.ts          # Next.js API-Route, cached Overpass-Proxy
-│   │   ├── globals.css               # Globale Styles, Leaflet-Overrides, Fonts
-│   │   ├── layout.tsx                # Root Layout, Metadata
-│   │   └── page.tsx                  # Hauptseite, State-Management
-│   ├── components/
-│   │   ├── Header.tsx                # Titel, Datum/Uhrzeit-Picker, Quick-Action
-│   │   ├── FilterBar.tsx             # Filter: nur sonnig, Typ, Sortierung
-│   │   ├── CafeList.tsx              # Scrollbare Liste der Cafés
-│   │   ├── MapView.tsx               # Leaflet-Karte, Marker, Legende
-│   │   ├── CafeDetailPanel.tsx       # Detail-Panel bei Klick auf Spot
-│   │   ├── SunStatusBadge.tsx        # Wiederverwendbares Status-Badge
-│   │   ├── LoadingState.tsx          # Ladeanimation
-│   │   └── ErrorBanner.tsx           # Fehlermeldung
-│   ├── lib/
-│   │   ├── overpass.ts               # Overpass-Query-Builder und -Fetcher
-│   │   ├── sun.ts                    # SunCalc-Wrapper: Position, Zeiten
-│   │   ├── shadow.ts                 # Schatten-Heuristik: Score → Status
-│   │   └── fallback-cafes.ts         # Beispieldaten für Offline/API-Ausfall
-│   └── types/
-│       └── index.ts                  # Alle TypeScript-Typen
-├── public/
-├── package.json
-├── tailwind.config.ts
-├── tsconfig.json
-└── README.md
+src/
+├── app/
+│   ├── api/
+│   │   ├── cafes/route.ts       # Overpass-Proxy für Cafés (1h Cache)
+│   │   └── buildings/route.ts   # Overpass-Proxy für Gebäude (bbox-basiert)
+│   ├── icon.tsx                 # App-Icon (PNG via ImageResponse)
+│   ├── apple-icon.tsx           # iOS Home-Screen-Icon (180×180)
+│   ├── manifest.ts              # PWA Manifest
+│   ├── layout.tsx               # Meta-Tags, PWA, Open Graph
+│   └── page.tsx                 # Hauptseite + alle UI-Komponenten
+├── components/
+│   ├── MapView.tsx              # Leaflet-Karte, Schatten, Marker, Kompass
+│   └── InstallBanner.tsx        # "Zum Home-Bildschirm" Anleitung (iOS/Android)
+└── lib/
+    ├── overpass.ts              # Overpass-Query-Builder
+    ├── buildingShadow.ts        # Schattenpolygon + konvexe Hülle (Monotone Chain)
+    ├── sun.ts                   # SunCalc-Wrapper
+    └── fallback-cafes.ts        # Fallback-Daten bei API-Ausfall
 ```
 
 ---
 
-## Funktionen
+## Abgedecktes Gebiet
 
-### ✅ Implementiert
+Wiener Bezirke **6 (Mariahilf)**, **7 (Neubau)** und **8 (Josefstadt)** — das dichteste Café-Viertel der Stadt.
 
-- **Interaktive Karte** (Leaflet + OpenStreetMap-Tiles), initaler Fokus auf Wien Bezirke 1–9
-- **Café-Daten aus Overpass API** (amenity=cafe, restaurant, bar)
-- **Sonnenstandberechnung** mit SunCalc (Azimut, Höhe, Sonnenauf-/-untergang)
-- **Schatten-Heuristik** für städtische Umgebung (Gebäudehöhe × Straßenbreite × Richtungsfaktor)
-- **Status**: Sonnig / Teilweise sonnig / Schattig
-- **Filter**: nur sonnige Spots, Typ-Filter, Sortierung (sonnig zuerst, Name, Entfernung)
-- **Zeitsteuerung**: Datum + Uhrzeit wählbar, Standard = jetzt
-- **URL-Parameter**: `?date=2024-07-15&time=16:00&sunny=1`
-- **„Jetzt sonnige Cafés"**-Button
-- **Detail-Panel** mit Sonnenstand, Azimut, Auf-/Untergangszeiten
-- **Fallback-Daten** wenn Overpass API temporär nicht erreichbar
-- **Caching** der Overpass-Anfragen (1h in-memory + Next.js revalidate)
-- **Fehlerbehandlung** + Loading States + leere Zustände
-
----
-
-## Schatten-Heuristik (Wie funktioniert sie?)
-
-Da exakte 3D-Schattenberechnung sehr aufwändig ist, nutzt der MVP eine **praktikable Näherung**:
-
-1. **Sonnenstand** (Höhe in Grad über dem Horizont): Je tiefer die Sonne, desto mehr Schatten.
-2. **Kritischer Schattenwinkel**: `arctan(Gebäudehöhe / Straßenbreite)` – wenn die Sonne flacher einfällt als dieser Winkel, liegt man im Schatten.
-3. **Gebäudehöhe**: 18m für den 1. Bezirk, 14m für dichte Innenstadtbezirke, 10m weiter außen.
-4. **Straßenrichtung**: In Wien ist das Straßennetz grob N–S / O–W ausgerichtet. Je nach Azimut der Sonne wird ein Richtungsfaktor angewendet.
-5. **Kombination**: Höhenfaktor (55%) + Richtungsfaktor × Dichte (45%) → Score 0–1 → Status.
-
-**Score 0–0.3** → ☀️ Sonnig  
-**Score 0.3–0.65** → ⛅ Teilweise sonnig  
-**Score 0.65–1.0** → 🌥️ Schattig
-
----
-
-## Mögliche nächste Schritte
-
-### 3D-Gebäudedaten für Wien einbinden
-
-Wien bietet exzellente Open-Government-Data-Quellen:
-
-#### Option A: Wien OGD 3D-Gebäudemodell
-- **Quelle**: https://www.data.gv.at/katalog/dataset/3d-gebaeudemodell-lod2-wien
-- **Format**: CityGML / LOD2 (enthält echte Gebäudehöhen)
-- **Einbindung**: Parsen der LOD2-Daten, Gebäude um jeden Café-Spot abfragen, exakte Schattenberechnung mit Ray-Casting
-
-#### Option B: OpenStreetMap building:height Tags
-- Viele Wiener Gebäude haben `building:height` oder `building:levels` in OSM
-- Overpass-Query: `way["building"]["building:height"](around:100,lat,lng)`
-- Bereits in `src/lib/overpass.ts` vorbereitet
-
-#### Option C: Mapbox GL / Deck.gl mit 3D-Gebäuden
-- Für echte 3D-Visualisierung: MapLibre GL JS + 3D-Gebäude-Layer
-- Würde den Tile-Layer durch einen 3D-Render ersetzen
-
-### Weitere Features
-- [ ] Benutzerstandort (GPS) als Ausgangspunkt
-- [ ] Notification/Alert wenn ein Lieblingsspot sonnig wird
-- [ ] Tagesvorschau: Sonnengang-Timeline für einen Spot
-- [ ] PWA / Mobile App
-- [ ] Service Worker für Offline-Betrieb
-- [ ] Echte Gebäude-Polygon-Abfrage via Overpass (around:50m)
-- [ ] Wiener Gastgärten-Datenbank (tourism=outdoor_seating)
+```
+Bounding Box: 48.1883°N – 48.2154°N  /  16.3369°E – 16.3660°E
+```
 
 ---
 
 ## Lizenz
 
-MIT – frei verwendbar und erweiterbar.
+MIT
