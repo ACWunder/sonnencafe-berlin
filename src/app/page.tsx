@@ -300,11 +300,11 @@ export default function Home() {
             onSunTimeline={handleSunTimeline}
           />
 
-          {/* Mobile: floating cafe card above sheet — Google Maps style */}
+          {/* Mobile: floating cafe card — fixed so it escapes overflow/stacking */}
           {selectedCafe && (
             <div
-              className="md:hidden absolute left-3 right-3 z-30 mobile-cafe-card-enter"
-              style={{ bottom: "84px" }}
+              className="md:hidden fixed left-3 right-3 z-[9999] mobile-cafe-card-enter"
+              style={{ bottom: "calc(84px + env(safe-area-inset-bottom, 0px))" }}
             >
               <SelectedCafeCard
                 key={selectedCafe.id}
