@@ -351,10 +351,12 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
         [DISTRICT_BOUNDS.south, DISTRICT_BOUNDS.west],
         [DISTRICT_BOUNDS.north, DISTRICT_BOUNDS.east],
       );
+      const renderer = L.canvas({ padding: 1.0 }); // render 1× viewport beyond edges
       const map = L.map(mapRef.current, {
         zoomControl: false,
         minZoom: 14,
         preferCanvas: true,   // Canvas renderer: far faster for 12k+ polygons
+        renderer,
         zoomSnap: 0.5,        // Smoother zoom steps
         zoomDelta: 0.5,
         wheelPxPerZoomLevel: 80,
@@ -379,9 +381,8 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", tileOptions).addTo(map);
       map.attributionControl.remove();
 
-      // Custom panes with fixed z-indices → shadows always below buildings,
-      // regardless of the order polygons are added to the SVG DOM.
-      // z-order: shadows → buildings → labels → cafes (top)
+      // z-order: green → shadows → buildings → location → labels → cafes
+      map.createPane("greenPane").style.zIndex = "400";
       const shadowPaneEl = map.createPane("shadowPane");
       shadowPaneEl.style.zIndex = "401";
       shadowPaneEl.style.opacity = "0.55";
@@ -408,8 +409,22 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
 
       mapInstanceRef.current = map;
 
-      // Load all buildings at once from static CDN file (no per-viewport API calls)
+      // Load buildings + green areas from static CDN files
       loadStaticBuildings(L);
+      fetch("/green-areas-cache.json")
+        .then((r) => r.json())
+        .then(({ areas }: { areas: { id: number; polygon: [number, number][] }[] }) => {
+          areas.forEach((a) => {
+            L.polygon(a.polygon, {
+              color: "transparent",
+              fillColor: "#86efac",
+              fillOpacity: 0.55,
+              interactive: false,
+              pane: "greenPane",
+            }).addTo(map);
+          });
+        })
+        .catch(() => {});
 
       // Redraw markers at new zoom-dependent size on every zoom change
       map.on("zoomend", () => updateCafeDots(L, false));
