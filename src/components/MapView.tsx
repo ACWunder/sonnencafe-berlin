@@ -451,14 +451,26 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
         })
         .catch(() => {});
 
-      // During pure pan: force canvas renderers to reposition+redraw each
-      // animation frame so buildings/shadows stay visible mid-gesture.
-      // During pinch-zoom: skip — _animatingZoom is NOT set for pinch, so
-      // _update() would fire for every frame of the gesture and redraw all
-      // 27k+ polygons each time, causing severe jank. Let CSS transform
-      // handle the visual scaling; a clean redraw fires on zoomend instead.
+      // Keep canvas layers (buildings, shadows, green areas) visible during
+      // both pan and zoom gestures.
+      //
+      // Pan  → redraw every animation frame (cheap: just reposition canvas).
+      // Zoom → redraw at most every 150 ms (pinch fires ~60 touch events/s;
+      //        redrawing 27k polygons every frame causes severe jank, but
+      //        every ~150 ms is imperceptible and keeps canvas ahead of the
+      //        newly revealed area).
+      //
+      // Both use RAF so redraws are always in sync with the browser's
+      // render loop, never mid-frame.
       let isZooming = false;
       let moveRafId: number | null = null;
+      let lastZoomDraw = 0;
+      const ZOOM_THROTTLE_MS = 150;
+
+      const redrawPanes = () => {
+        const pr: Record<string, unknown> = (map as any)._paneRenderers ?? {};
+        Object.values(pr).forEach((r: any) => r?._update?.());
+      };
 
       map.on("zoomstart", () => {
         isZooming = true;
@@ -466,21 +478,23 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       });
 
       map.on("move", () => {
-        if (isZooming || moveRafId !== null) return;
+        if (moveRafId !== null) return;
         moveRafId = requestAnimationFrame(() => {
           moveRafId = null;
-          const pr: Record<string, unknown> = (map as any)._paneRenderers ?? {};
-          Object.values(pr).forEach((r: any) => r?._update?.());
+          if (isZooming) {
+            // Throttle during zoom to avoid redrawing 27k polygons every frame
+            const now = Date.now();
+            if (now - lastZoomDraw < ZOOM_THROTTLE_MS) return;
+            lastZoomDraw = now;
+          }
+          redrawPanes();
         });
       });
 
-      // On zoom end: re-enable pan updates, redraw cafe dots at new zoom-
-      // dependent size, and force all canvas renderers to repaint cleanly.
       map.on("zoomend", () => {
         isZooming = false;
         updateCafeDots(L, false);
-        const pr: Record<string, unknown> = (map as any)._paneRenderers ?? {};
-        Object.values(pr).forEach((r: any) => r?._update?.());
+        redrawPanes(); // final clean repaint at settled zoom level
       });
 
       // Location pane below labels
