@@ -150,7 +150,25 @@ function drawShadows(
 
   const date = new Date(`${timeState.date}T${timeState.time}:00`);
   const sunPos = getSunPosition(NEUBAU_CENTER[0], NEUBAU_CENTER[1], date);
-  if (sunPos.altitudeDeg <= 0) return;
+
+  if (sunPos.altitudeDeg <= 0) {
+    // Night: cover entire district with a shadow rectangle
+    const nightPoly: [number, number][] = [
+      [DISTRICT_BOUNDS.south, DISTRICT_BOUNDS.west],
+      [DISTRICT_BOUNDS.north, DISTRICT_BOUNDS.west],
+      [DISTRICT_BOUNDS.north, DISTRICT_BOUNDS.east],
+      [DISTRICT_BOUNDS.south, DISTRICT_BOUNDS.east],
+    ];
+    shadowStore.push(nightPoly);
+    L.polygon(nightPoly, {
+      color: "transparent",
+      fillColor: "#334155",
+      fillOpacity: 1.0,
+      interactive: false,
+      pane: shadowPane,
+    }).addTo(layer);
+    return;
+  }
 
   buildings.forEach((b) => {
     const shadow = calcShadowPolygon(b.polygon, b.height ?? FALLBACK_HEIGHT, sunPos.altitudeDeg, sunPos.azimuthDeg);
@@ -235,35 +253,40 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       const baseRadius = zoom >= 17 ? 5 : zoom >= 16 ? 4 : 3;
       const radius = isSelected ? baseRadius + 3 : baseRadius;
 
-      const marker = L.circleMarker([cafe.lat, cafe.lng], {
+      // Visual dot — non-interactive so the hit area underneath handles events
+      L.circleMarker([cafe.lat, cafe.lng], {
         radius,
         color: isSelected ? "#ffffff" : "#ea580c",
         fillColor: color,
         fillOpacity: 1,
         weight: isSelected ? 2 : 0,
+        interactive: false,
+        pane: "cafePane",
+      }).addTo(cLayer);
+
+      // Large transparent hit area (~32 px diameter touch target) — canvas renderer
+      // uses geometric containsPoint(radius) so fillOpacity doesn't affect hit detection.
+      const hitArea = L.circleMarker([cafe.lat, cafe.lng], {
+        radius: 16,
+        color: "transparent",
+        fillColor: "#000",
+        fillOpacity: 0,
+        weight: 0,
         interactive: true,
         pane: "cafePane",
       });
 
-      // Force pointer-events:all on the SVG element so the full circle
-      // is tappable on iOS regardless of stroke/fill transparency
-      marker.on("add", () => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const el = (marker as any).getElement?.();
-        if (el) el.style.pointerEvents = "all";
-      });
-
-      marker.bindTooltip(cafe.name, {
+      hitArea.bindTooltip(cafe.name, {
         direction: "top",
         offset: [0, -6],
         className: "leaflet-cafe-tooltip",
       });
 
-      marker.on("click", () => {
+      hitArea.on("click", () => {
         onCafeSelectRef.current(cafe);
       });
 
-      marker.addTo(cLayer);
+      hitArea.addTo(cLayer);
     });
 
     // Heavy computation: sun-remaining + day timeline for all cafes.
@@ -580,9 +603,13 @@ function Legend() {
         <div style={{ width: 12, height: 12, borderRadius: 4, background: "#334155", opacity: 0.65 }} />
         <span className="font-body text-zinc-600" style={{ fontSize: "11px" }}>Schatten</span>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 mb-1.5">
         <div style={{ width: 12, height: 12, borderRadius: 4, background: "#e2e8f0", border: "1.5px solid #cbd5e1" }} />
         <span className="font-body text-zinc-600" style={{ fontSize: "11px" }}>Gebäude</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <div style={{ width: 12, height: 12, borderRadius: 4, background: "#86efac" }} />
+        <span className="font-body text-zinc-600" style={{ fontSize: "11px" }}>Grünfläche</span>
       </div>
     </div>
   );
