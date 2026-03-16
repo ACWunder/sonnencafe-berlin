@@ -276,12 +276,6 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
         pane: "cafePane",
       });
 
-      hitArea.bindTooltip(cafe.name, {
-        direction: "top",
-        offset: [0, -6],
-        className: "leaflet-cafe-tooltip",
-      });
-
       hitArea.on("click", () => {
         onCafeSelectRef.current(cafe);
       });
