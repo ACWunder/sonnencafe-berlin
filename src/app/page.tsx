@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { format } from "date-fns";
-import { Sun, Search, MapPin, X, ExternalLink, Info } from "lucide-react";
+import { Sun, Search, MapPin, X, ExternalLink, Info, Menu } from "lucide-react";
 import type { Cafe, TimeState, SunTimeline, SunTimelineData } from "@/types";
 import { MapView } from "@/components/MapView";
 
@@ -23,6 +23,7 @@ export default function Home() {
   // Mobile bottom sheet state
   const [sheetExpanded, setSheetExpanded] = useState(false);
   const [showImpressum, setShowImpressum] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const dragStartY = useRef(0);
   const cardDragStartY = useRef(0);
 
@@ -150,6 +151,14 @@ export default function Home() {
 
       {/* ── Header ── */}
       <header className="bg-white/80 backdrop-blur-xl border-b border-zinc-100 px-3 py-2 flex items-center gap-2 shrink-0 z-10 overflow-hidden">
+        {/* Hamburger — mobile only */}
+        <button
+          onClick={() => setSidebarOpen(true)}
+          className="md:hidden w-7 h-7 flex items-center justify-center text-zinc-500 hover:text-zinc-800 active:scale-95 transition-all shrink-0 -ml-0.5"
+        >
+          <Menu className="w-4 h-4" />
+        </button>
+
         {/* Brand */}
         <div className="flex items-center gap-2 shrink-0">
           <div className="w-7 h-7 rounded-[8px] bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-sm shadow-amber-200">
@@ -250,6 +259,106 @@ export default function Home() {
                 </p>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Mobile slide-in sidebar ── */}
+      {sidebarOpen && (
+        <div className="md:hidden fixed inset-0 z-[9998] flex">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setSidebarOpen(false)}
+          />
+          {/* Panel */}
+          <div
+            className="relative flex flex-col bg-white h-full shadow-2xl"
+            style={{ width: "min(85vw, 340px)" }}
+          >
+            {/* Panel header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-[7px] bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+                  <Sun className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+                </div>
+                <span className="font-display font-bold text-zinc-900 text-[13px]">Sonnencafe Wien</span>
+              </div>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="w-7 h-7 rounded-full bg-zinc-100 hover:bg-zinc-200 flex items-center justify-center text-zinc-400 hover:text-zinc-600 transition-all"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Search */}
+            <div className="px-3 pt-3 pb-2 shrink-0">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-300 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Café suchen…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-[13px] font-body text-zinc-700 rounded-xl bg-zinc-50 border border-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-300 transition-all placeholder:text-zinc-300"
+                />
+              </div>
+              <p className="text-[10px] text-zinc-300 mt-1.5 font-body px-0.5">
+                {filtered.length} {filtered.length === 1 ? "Café" : "Cafés"}
+                {search && ` · „${search}"`}
+              </p>
+            </div>
+
+            {/* Cafe list */}
+            <ul className="flex-1 overflow-y-auto">
+              {filtered.length === 0 && (
+                <li className="p-6 text-[13px] text-zinc-300 font-body text-center">Keine Ergebnisse</li>
+              )}
+              {filtered.map((cafe) => {
+                const isSelected = selectedCafe?.id === cafe.id;
+                const mins = sunRemaining[cafe.id];
+                const isSunny = mins !== null && mins !== undefined;
+                const timeline = sunTimelines[cafe.id];
+                return (
+                  <li key={cafe.id}>
+                    <button
+                      onClick={() => {
+                        setSelectedCafe(isSelected ? null : cafe);
+                        setSidebarOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2.5 transition-all duration-150 border-l-2 ${
+                        isSelected ? "bg-amber-50/60 border-amber-400" : "border-transparent hover:bg-zinc-50"
+                      }`}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 transition-colors duration-300 ${isSunny ? "bg-orange-400" : "bg-zinc-200"}`} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <p className={`text-[13px] font-body leading-snug truncate transition-colors ${isSelected ? "font-semibold text-zinc-900" : "text-zinc-700"}`}>
+                              {cafe.name}
+                            </p>
+                            {isSunny && (
+                              <span className="text-[10px] font-body font-medium text-orange-400 shrink-0">
+                                {mins! >= 240 ? ">4h ☀" : mins! >= 60 ? `${Math.floor(mins! / 60)}h${mins! % 60 > 0 ? `${mins! % 60}m` : ""} ☀` : `${mins}m ☀`}
+                              </span>
+                            )}
+                          </div>
+                          {(cafe.address || cafe.district) && (
+                            <p className="text-[11px] text-zinc-400 font-body mt-0.5 truncate">
+                              {cafe.address || cafe.district}
+                            </p>
+                          )}
+                          {timeline && (
+                            <SunTimelineBar timeline={timeline} currentMinute={currentMinute} isSunny={isSunny} />
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         </div>
       )}
