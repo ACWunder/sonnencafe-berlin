@@ -229,11 +229,11 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       const color = inShadow ? "#374151" : "#ea580c";
 
       const marker = L.circleMarker([cafe.lat, cafe.lng], {
-        radius: isSelected ? 11 : 9,
+        radius: isSelected ? 8 : 5,
         color: isSelected ? "#ffffff" : "#ea580c",
         fillColor: color,
         fillOpacity: 1,
-        weight: isSelected ? 2.5 : 0,
+        weight: isSelected ? 2 : 0,
         interactive: true,
         pane: "cafePane",
       });

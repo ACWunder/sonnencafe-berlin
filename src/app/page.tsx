@@ -24,6 +24,7 @@ export default function Home() {
   const [sheetExpanded, setSheetExpanded] = useState(false);
   const [showImpressum, setShowImpressum] = useState(false);
   const dragStartY = useRef(0);
+  const cardDragStartY = useRef(0);
 
   const handleSunRemaining = useCallback((data: Record<string, number | null>) => {
     setSunRemaining(data);
@@ -300,11 +301,16 @@ export default function Home() {
             onSunTimeline={handleSunTimeline}
           />
 
-          {/* Mobile: floating cafe card — fixed so it escapes overflow/stacking */}
+          {/* Mobile: floating cafe card — fixed, right-aligned, same bottom as legend */}
           {selectedCafe && (
             <div
-              className="md:hidden fixed left-3 right-3 z-[9999] mobile-cafe-card-enter"
-              style={{ bottom: "calc(84px + env(safe-area-inset-bottom, 0px))" }}
+              className="md:hidden fixed z-[9999] mobile-cafe-card-enter"
+              style={{ bottom: "24px", right: 0, width: "300px" }}
+              onTouchStart={(e) => { cardDragStartY.current = e.touches[0].clientY; }}
+              onTouchEnd={(e) => {
+                const dy = e.changedTouches[0].clientY - cardDragStartY.current;
+                if (dy > 60) setSelectedCafe(null);
+              }}
             >
               <SelectedCafeCard
                 key={selectedCafe.id}
