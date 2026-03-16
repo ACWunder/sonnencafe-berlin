@@ -196,6 +196,9 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
 
   const [fetching, setFetching] = useState(false);
   const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const locationMarkerRef = useRef<any>(null);
+  const [locating, setLocating] = useState(false);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function updateCafeDots(L: any, recomputeSunData = true) {
@@ -423,6 +426,10 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
 
       // Redraw markers at new zoom-dependent size on every zoom change
       map.on("zoomend", () => updateCafeDots(L, false));
+
+      // Location pane above cafes
+      const locationPane = map.createPane("locationPane");
+      locationPane.style.zIndex = "404";
     });
 
     return () => {
@@ -479,6 +486,64 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
           Gebäude laden…
         </div>
       )}
+
+      {/* Locate button — top-left below hamburger */}
+      <button
+        onClick={() => {
+          if (!mapInstanceRef.current) return;
+          setLocating(true);
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              setLocating(false);
+              import("leaflet").then((L) => {
+                const map = mapInstanceRef.current;
+                if (!map) return;
+                const { latitude: lat, longitude: lng } = pos.coords;
+
+                // Remove old marker
+                if (locationMarkerRef.current) {
+                  locationMarkerRef.current.remove();
+                }
+
+                // Pulsing blue dot via DivIcon
+                const icon = L.divIcon({
+                  className: "",
+                  html: `<div style="
+                    width:18px;height:18px;border-radius:50%;
+                    background:#3b82f6;border:2.5px solid white;
+                    box-shadow:0 0 0 4px rgba(59,130,246,0.25);
+                    animation:locationPulse 2s ease-in-out infinite;
+                  "></div>`,
+                  iconSize: [18, 18],
+                  iconAnchor: [9, 9],
+                });
+
+                locationMarkerRef.current = L.marker([lat, lng], {
+                  icon,
+                  interactive: false,
+                  pane: "locationPane",
+                }).addTo(map);
+
+                map.panTo([lat, lng], { animate: true, duration: 0.6 });
+              });
+            },
+            () => setLocating(false),
+            { enableHighAccuracy: true, timeout: 8000 },
+          );
+        }}
+        className="absolute top-14 left-3 z-[500] w-9 h-9 bg-white/90 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-lg shadow-zinc-200/40 flex items-center justify-center active:scale-95 transition-all"
+        title="Meinen Standort anzeigen"
+      >
+        {locating ? (
+          <div className="w-4 h-4 border-[1.5px] border-blue-400 border-t-transparent rounded-full animate-spin" />
+        ) : (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3" />
+            <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+            <circle cx="12" cy="12" r="8" strokeOpacity="0.3" />
+          </svg>
+        )}
+      </button>
 
       {/* Legend + compass stacked bottom-left */}
       <div className="absolute z-[500] flex flex-col gap-2 items-start" style={{ bottom: "24px", left: "12px" }}>

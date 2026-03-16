@@ -170,3 +170,9 @@ aside ::-webkit-scrollbar-track {
 .leaflet-control-attribution {
   display: none !important;
 }
+
+/* Location dot pulse */
+@keyframes locationPulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(59,130,246,0.25); }
+  50% { box-shadow: 0 0 0 8px rgba(59,130,246,0.08); }
+}
