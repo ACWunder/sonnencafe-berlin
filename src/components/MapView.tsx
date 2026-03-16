@@ -416,15 +416,16 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       cafePaneEl.style.zIndex = "405"; // above labels
       cafePaneEl.style.pointerEvents = "auto";
 
-      // Pre-create canvas renderers for each custom pane with padding=0.3.
-      // Leaflet auto-creates pane renderers on-demand with default padding=0.1
-      // (10% of viewport). During zoom-out the CSS-scaled canvas quickly falls
-      // short of the new viewport size. padding=0.3 gives a 1.6× canvas — small
-      // enough that redrawing 27k polygons stays fast, large enough that the
-      // 150ms throttle between redraws never exposes bare background.
+      // Pre-create canvas renderers for each custom pane with padding=0.6.
+      // Leaflet default is 0.1 (10% of viewport).
+      // padding=0.6 → canvas = 2.2× viewport in each dimension.
+      // During zoom-out the CSS transform shrinks the canvas visually;
+      // 2.2× gives coverage down to a ~0.45× scale factor (≈1 full zoom level
+      // out) before any edge is exposed — without needing any canvas draws
+      // during the gesture (which would block the main thread and cause jank).
       (map as any)._paneRenderers = (map as any)._paneRenderers ?? {};
       (["greenPane", "shadowPane", "buildingPane", "cafePane"] as const).forEach((pane) => {
-        const r = L.canvas({ padding: 0.3, pane });
+        const r = L.canvas({ padding: 0.6, pane });
         (map as any)._paneRenderers[pane] = r;
         r.addTo(map);
       });
@@ -464,50 +465,46 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
         })
         .catch(() => {});
 
-      // Keep canvas layers (buildings, shadows, green areas) visible during
-      // both pan and zoom gestures.
+      // Canvas layer updates during pan and zoom.
       //
-      // Pan  → redraw every animation frame (cheap: just reposition canvas).
-      // Zoom → redraw at most every 150 ms (pinch fires ~60 touch events/s;
-      //        redrawing 27k polygons every frame causes severe jank, but
-      //        every ~150 ms is imperceptible and keeps canvas ahead of the
-      //        newly revealed area).
+      // ZOOM: zero canvas draws during the gesture. The browser composites
+      // the CSS transform entirely on the GPU — any synchronous canvas draw
+      // (even one per 150 ms) blocks the main thread and produces the
+      // "different frames" stutter the user sees. padding=0.6 above gives
+      // a 2.2× canvas so the pre-drawn content covers ~1 full zoom-level
+      // of zoom-out before any edge is exposed. One clean redraw fires on
+      // zoomend once the user lifts their fingers.
       //
-      // Both use RAF so redraws are always in sync with the browser's
-      // render loop, never mid-frame.
-      let isZooming = false;
-      let moveRafId: number | null = null;
-      let lastZoomDraw = 0;
-      const ZOOM_THROTTLE_MS = 150;
-
+      // PAN: redraw every animation frame via RAF. Moving the canvas is
+      // cheap (no zoom-scale arithmetic) and keeps buildings flush with
+      // the tiles while dragging.
       const redrawPanes = () => {
         const pr: Record<string, unknown> = (map as any)._paneRenderers ?? {};
         Object.values(pr).forEach((r: any) => r?._update?.());
       };
+
+      let isZooming = false;
+      let moveRafId: number | null = null;
 
       map.on("zoomstart", () => {
         isZooming = true;
         if (moveRafId !== null) { cancelAnimationFrame(moveRafId); moveRafId = null; }
       });
 
+      // Pan only — skip entirely during zoom so the gesture is pure GPU CSS.
       map.on("move", () => {
-        if (moveRafId !== null) return;
+        if (isZooming || moveRafId !== null) return;
         moveRafId = requestAnimationFrame(() => {
           moveRafId = null;
-          if (isZooming) {
-            // Throttle during zoom to avoid redrawing 27k polygons every frame
-            const now = Date.now();
-            if (now - lastZoomDraw < ZOOM_THROTTLE_MS) return;
-            lastZoomDraw = now;
-          }
           redrawPanes();
         });
       });
 
+      // Single clean repaint after zoom settles.
       map.on("zoomend", () => {
         isZooming = false;
         updateCafeDots(L, false);
-        redrawPanes(); // final clean repaint at settled zoom level
+        redrawPanes();
       });
 
       // Location pane below labels
