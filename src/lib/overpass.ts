@@ -4,12 +4,12 @@ import type { Cafe, OverpassResponse } from "@/types";
 
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
 
-// OSM bounding box for districts 5 (Margareten), 6 (Mariahilf), 7 (Neubau), 8 (Josefstadt)
+// OSM bounding box for districts 6 (Mariahilf), 7 (Neubau), 8 (Josefstadt)
 export const VIENNA_BBOX = {
-  south: 48.175,
-  west: 16.333,
+  south: 48.1883,
+  west: 16.3369,
   north: 48.2154,
-  east: 16.375,
+  east: 16.3660,
 };
 
 export const VIENNA_FULL_BBOX = VIENNA_BBOX;

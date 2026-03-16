@@ -8,11 +8,11 @@ import { getSunPosition, getSunTimes } from "@/lib/sun";
 import { calcShadowPolygon } from "@/lib/buildingShadow";
 import type { BuildingFeature } from "@/app/api/buildings/route";
 
-// OSM bounds for districts 5 (Margareten), 6 (Mariahilf), 7 (Neubau), 8 (Josefstadt)
+// OSM bounds for districts 6 (Mariahilf), 7 (Neubau), 8 (Josefstadt)
 // — must match overpass.ts VIENNA_BBOX exactly
 const DISTRICT_BOUNDS = {
-  south: 48.175, west: 16.333,
-  north: 48.2154, east: 16.375,
+  south: 48.1883, west: 16.3369,
+  north: 48.2154, east: 16.3660,
 } as const;
 
 const MAP_CENTER: [number, number] = [
