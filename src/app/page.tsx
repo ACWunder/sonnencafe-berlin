@@ -307,18 +307,21 @@ export default function Home() {
               height: "68vh",
               transform: sheetExpanded ? "translateY(0)" : "translateY(calc(68vh - 76px))",
               transition: "transform 0.38s cubic-bezier(0.16, 1, 0.3, 1)",
-            }}
-            onTouchStart={(e) => { dragStartY.current = e.touches[0].clientY; }}
-            onTouchEnd={(e) => {
-              const dy = e.changedTouches[0].clientY - dragStartY.current;
-              if (dy < -40) setSheetExpanded(true);
-              else if (dy > 40) setSheetExpanded(false);
+              // When collapsed, only the handle area is interactive — rest passes touch events to map
+              pointerEvents: sheetExpanded ? "auto" : "none",
             }}
           >
-            {/* Drag handle */}
+            {/* Drag handle — always interactive even when sheet is collapsed */}
             <div
               className="flex items-center justify-center pt-3 pb-2 shrink-0 cursor-pointer"
+              style={{ pointerEvents: "auto" }}
               onClick={() => setSheetExpanded((v) => !v)}
+              onTouchStart={(e) => { dragStartY.current = e.touches[0].clientY; }}
+              onTouchEnd={(e) => {
+                const dy = e.changedTouches[0].clientY - dragStartY.current;
+                if (dy < -40) setSheetExpanded(true);
+                else if (dy > 40) setSheetExpanded(false);
+              }}
             >
               <div className="w-10 h-1 rounded-full bg-zinc-200" />
             </div>
