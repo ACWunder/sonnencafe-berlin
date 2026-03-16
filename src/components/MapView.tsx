@@ -463,12 +463,10 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCafe]);
 
-  // Pan to selected cafe (don't zoom in too far — avoids loading extra buildings)
+  // Pan to selected cafe without changing zoom
   useEffect(() => {
     if (!selectedCafe || !mapInstanceRef.current) return;
-    const map = mapInstanceRef.current;
-    const currentZoom = map.getZoom();
-    map.setView([selectedCafe.lat, selectedCafe.lng], Math.max(currentZoom, 16), { animate: true, duration: 0.4 });
+    mapInstanceRef.current.panTo([selectedCafe.lat, selectedCafe.lng], { animate: true, duration: 0.4 });
   }, [selectedCafe]);
 
   return (
