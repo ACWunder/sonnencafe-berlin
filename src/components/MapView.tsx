@@ -216,9 +216,6 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
   function getViewportBuildings(all: BuildingFeature[]): BuildingFeature[] {
     const map = mapInstanceRef.current;
     if (!map || all.length === 0) return all;
-    // Below zoom 15 individual building shadows are sub-pixel — skip them entirely.
-    // The yellow district overlay still conveys sunny vs shady areas at low zoom.
-    if (map.getZoom() < 15) return [];
     const b = map.getBounds().pad(1.0);
     const s = b.getSouth(), n = b.getNorth(), w = b.getWest(), e = b.getEast();
     return all.filter((bld) => {
