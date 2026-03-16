@@ -406,7 +406,7 @@ export default function Home() {
 
           {/* Hamburger — floating below app icon, mobile only */}
           <button
-            onClick={() => setSidebarOpen(true)}
+            onClick={() => { setSidebarOpen(true); setSelectedCafe(null); }}
             className="md:hidden absolute top-3 left-3 z-[500] w-9 h-9 bg-white/90 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-lg shadow-zinc-200/40 flex items-center justify-center text-zinc-500 active:scale-95 transition-all"
           >
             <Menu className="w-4 h-4" />
