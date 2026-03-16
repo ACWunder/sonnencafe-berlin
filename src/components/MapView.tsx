@@ -451,27 +451,37 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
         })
         .catch(() => {});
 
-      // Keep canvas layers (buildings, shadows, green areas) visible while
-      // the user is still dragging. Leaflet only calls _update() on canvas
-      // renderers on moveend, so vector layers vanish mid-gesture once the
-      // pre-drawn padding area is exceeded. We force a reposition+redraw
-      // on every animation frame during move — RAF-throttled so it runs at
-      // most once per frame and never queues up.
+      // During pure pan: force canvas renderers to reposition+redraw each
+      // animation frame so buildings/shadows stay visible mid-gesture.
+      // During pinch-zoom: skip — _animatingZoom is NOT set for pinch, so
+      // _update() would fire for every frame of the gesture and redraw all
+      // 27k+ polygons each time, causing severe jank. Let CSS transform
+      // handle the visual scaling; a clean redraw fires on zoomend instead.
+      let isZooming = false;
       let moveRafId: number | null = null;
+
+      map.on("zoomstart", () => {
+        isZooming = true;
+        if (moveRafId !== null) { cancelAnimationFrame(moveRafId); moveRafId = null; }
+      });
+
       map.on("move", () => {
-        if (moveRafId !== null) return;
+        if (isZooming || moveRafId !== null) return;
         moveRafId = requestAnimationFrame(() => {
           moveRafId = null;
-          // Leaflet auto-creates one canvas renderer per custom pane
-          // (stored in map._paneRenderers). _update() repositions the
-          // canvas and redraws all its layers at the current viewport.
           const pr: Record<string, unknown> = (map as any)._paneRenderers ?? {};
           Object.values(pr).forEach((r: any) => r?._update?.());
         });
       });
 
-      // Redraw markers at new zoom-dependent size on every zoom change
-      map.on("zoomend", () => updateCafeDots(L, false));
+      // On zoom end: re-enable pan updates, redraw cafe dots at new zoom-
+      // dependent size, and force all canvas renderers to repaint cleanly.
+      map.on("zoomend", () => {
+        isZooming = false;
+        updateCafeDots(L, false);
+        const pr: Record<string, unknown> = (map as any)._paneRenderers ?? {};
+        Object.values(pr).forEach((r: any) => r?._update?.());
+      });
 
       // Location pane below labels
       const locationPane = map.createPane("locationPane");
