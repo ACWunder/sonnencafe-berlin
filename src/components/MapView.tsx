@@ -389,7 +389,7 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
       const renderer = L.canvas({ padding: 1.0 }); // render 1× viewport beyond edges
       const map = L.map(mapRef.current, {
         zoomControl: false,
-        minZoom: 14,
+        minZoom: 12,
         preferCanvas: true,   // Canvas renderer: far faster for 12k+ polygons
         renderer,
         zoomSnap: 0.5,        // Smoother zoom steps
