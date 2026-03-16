@@ -195,7 +195,6 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
   timeStateRef.current = timeState;
 
   const [fetching, setFetching] = useState(false);
-  const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const locationMarkerRef = useRef<any>(null);
   const [locating, setLocating] = useState(false);
@@ -323,21 +322,15 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
     });
   }
 
-  // Fetch buildings for a bbox, merge into cache, rebuild layers
+  // Load all buildings from pre-built static JSON (served via CDN, no Overpass call)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function fetchForBbox(L: any, bbox: string) {
+  function loadStaticBuildings(L: any) {
     setFetching(true);
-    fetch(`/api/buildings?bbox=${bbox}`)
+    fetch("/buildings-cache.json")
       .then((r) => r.json())
       .then(({ buildings }: { buildings: BuildingFeature[] }) => {
-        let added = 0;
-        buildings.forEach((b) => {
-          if (!buildingCacheRef.current.has(b.id)) {
-            buildingCacheRef.current.set(b.id, b);
-            added++;
-          }
-        });
-        if (added > 0) rebuildLayers(L);
+        buildings.forEach((b) => buildingCacheRef.current.set(b.id, b));
+        rebuildLayers(L);
         setFetching(false);
       })
       .catch(() => setFetching(false));
@@ -405,26 +398,8 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
 
       mapInstanceRef.current = map;
 
-      // Clamp viewport bounds to district bounds before fetching buildings
-      function clampedBbox(): string {
-        const b = map.getBounds();
-        const s = Math.max(b.getSouth(), DISTRICT_BOUNDS.south);
-        const w = Math.max(b.getWest(),  DISTRICT_BOUNDS.west);
-        const n = Math.min(b.getNorth(), DISTRICT_BOUNDS.north);
-        const e = Math.min(b.getEast(),  DISTRICT_BOUNDS.east);
-        return `${s},${w},${n},${e}`;
-      }
-
-      // Fetch buildings for initial viewport
-      fetchForBbox(L, clampedBbox());
-
-      // Re-fetch when map is moved (debounced 600 ms)
-      map.on("moveend zoomend", () => {
-        if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
-        fetchTimerRef.current = setTimeout(() => {
-          fetchForBbox(L, clampedBbox());
-        }, 600);
-      });
+      // Load all buildings at once from static CDN file (no per-viewport API calls)
+      loadStaticBuildings(L);
 
       // Redraw markers at new zoom-dependent size on every zoom change
       map.on("zoomend", () => updateCafeDots(L, false));
@@ -446,7 +421,6 @@ export function MapView({ timeState, cafes, selectedCafe, onCafeSelect, onSunRem
 
     return () => {
       mounted = false;
-      if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
