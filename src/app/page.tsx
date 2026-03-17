@@ -87,31 +87,44 @@ export default function Home() {
 
         <div className="w-px h-4 bg-zinc-100 mx-0.5 shrink-0" />
 
-        {/* Date */}
-        <input
-          type="date"
-          value={timeState.date}
-          onChange={(e) => setTimeState((s) => ({ ...s, date: e.target.value }))}
-          className="text-[11px] font-body text-zinc-600 border border-zinc-200 rounded-[8px] px-2 py-1 bg-zinc-50/80 focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-300 transition-all cursor-pointer min-w-0 shrink"
-        />
+        {/* Date — styled pill, native picker underneath */}
+        <label className="relative cursor-pointer group shrink-0">
+          <div className="text-[11px] font-body text-zinc-600 border border-zinc-200 rounded-[8px] px-2.5 py-1 bg-zinc-50/80 group-hover:bg-amber-50/60 group-hover:border-amber-200 transition-all select-none whitespace-nowrap">
+            {(() => {
+              const d = new Date(timeState.date + "T12:00");
+              return `${d.getDate().toString().padStart(2, "0")}.${(d.getMonth() + 1).toString().padStart(2, "0")}.`;
+            })()}
+          </div>
+          <input
+            type="date"
+            value={timeState.date}
+            onChange={(e) => setTimeState((s) => ({ ...s, date: e.target.value }))}
+            className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+          />
+        </label>
 
-        {/* Time */}
-        <input
-          type="time"
-          value={timeState.time}
-          onChange={(e) => setTimeState((s) => ({ ...s, time: e.target.value }))}
-          className="text-[11px] font-body text-zinc-600 border border-zinc-200 rounded-[8px] px-2 py-1 bg-zinc-50/80 focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-300 transition-all cursor-pointer min-w-0 shrink"
-        />
+        {/* Time — styled pill, native picker underneath */}
+        <label className="relative cursor-pointer group shrink-0">
+          <div className="text-[11px] font-body text-zinc-600 border border-zinc-200 rounded-[8px] px-2.5 py-1 bg-zinc-50/80 group-hover:bg-amber-50/60 group-hover:border-amber-200 transition-all select-none tabular-nums">
+            {timeState.time}
+          </div>
+          <input
+            type="time"
+            value={timeState.time}
+            onChange={(e) => setTimeState((s) => ({ ...s, time: e.target.value }))}
+            className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+          />
+        </label>
 
-        {/* Now button — icon only on mobile, icon+text on desktop */}
+        {/* Now */}
         <button
           onClick={() => {
             const now = new Date();
             setTimeState({ date: format(now, "yyyy-MM-dd"), time: format(now, "HH:mm") });
           }}
-          className="flex items-center gap-1 bg-gradient-to-br from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white font-body font-semibold rounded-[8px] transition-all shadow-sm shadow-amber-200/60 active:scale-95 shrink-0 px-2 py-1"
+          className="text-[11px] font-body font-semibold bg-gradient-to-br from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white rounded-[8px] transition-all shadow-sm shadow-amber-200/60 active:scale-95 shrink-0 px-2.5 py-1"
         >
-          <span className="text-[11px]">Now</span>
+          Now
         </button>
 
         <button
