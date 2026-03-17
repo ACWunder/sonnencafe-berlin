@@ -67,6 +67,11 @@ function calcSunRemaining(
   const LAT_MAX   = 200 / 111_000;
   const LNG_MAX   = 200 / (111_000 * Math.cos((cafe.lat * Math.PI) / 180));
 
+  // Hard cap: result can never exceed actual minutes until sunset
+  const sunTimes = getSunTimes(cafe.lat, cafe.lng, currentDate);
+  const minsUntilSunset = Math.max(0, Math.floor((sunTimes.sunset.getTime() - currentDate.getTime()) / 60_000));
+  if (minsUntilSunset === 0) return null;
+
   const nearby = buildings.filter((b) => {
     const [bLat, bLng] = b.polygon[0];
     return Math.abs(bLat - cafe.lat) < LAT_MAX && Math.abs(bLng - cafe.lng) < LNG_MAX;
@@ -75,7 +80,7 @@ function calcSunRemaining(
   for (let step = 0; step <= MAX_STEPS; step++) {
     const date   = new Date(currentDate.getTime() + step * STEP_MS);
     const sunPos = getSunPosition(cafe.lat, cafe.lng, date);
-    if (sunPos.altitudeDeg <= 0) return step === 0 ? null : (step - 1) * 10;
+    if (sunPos.altitudeDeg <= 0) return step === 0 ? null : Math.min((step - 1) * 10, minsUntilSunset);
 
     const azRad  = (sunPos.azimuthDeg * Math.PI) / 180;
     const dlat   = (OFFSET_M * Math.cos(azRad)) / 111_000;
@@ -87,9 +92,9 @@ function calcSunRemaining(
       const poly = calcShadowPolygon(b.polygon, b.height ?? FALLBACK_HEIGHT, sunPos.altitudeDeg, sunPos.azimuthDeg);
       return poly.length >= 3 && pointInPolygon(chkLat, chkLng, poly);
     });
-    if (inShadow) return step === 0 ? null : (step - 1) * 10;
+    if (inShadow) return step === 0 ? null : Math.min((step - 1) * 10, minsUntilSunset);
   }
-  return MAX_STEPS * 10;
+  return Math.min(MAX_STEPS * 10, minsUntilSunset);
 }
 
 function calcDayTimeline(
