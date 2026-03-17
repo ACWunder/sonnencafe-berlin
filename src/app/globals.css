@@ -42,65 +42,30 @@ body {
   border-radius: 2px;
 }
 
-/* Leaflet overrides */
-.leaflet-container {
-  font-family: 'DM Sans', sans-serif !important;
+/* MapLibre overrides */
+.maplibregl-map {
+  font-family: 'DM Sans', sans-serif;
   border-radius: 12px;
-  /* CARTO light tile base color (~#fafaf8). The amber district overlay
-     (fillOpacity 0.38) sits above tiles on overlayPane. Setting this to
-     the raw tile color means: blank-area background → overlay once →
-     same result as loaded-tile → overlay once. No double-yellow flash.   */
-  background: #fafaf8 !important;
 }
 
-/* GPU-accelerate tile containers during zoom */
-.leaflet-zoom-anim .leaflet-tile-container {
-  will-change: transform;
+/* Hide MapLibre attribution (moved to Impressum) */
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-logo {
+  display: none !important;
 }
 
-.leaflet-popup-content-wrapper {
-  border-radius: 10px !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12) !important;
-  border: 1px solid #e7e5e4 !important;
+/* Style zoom controls to match the app */
+.maplibregl-ctrl-zoom-in,
+.maplibregl-ctrl-zoom-out {
+  font-family: 'DM Sans', sans-serif;
 }
 
-.leaflet-popup-tip {
-  background: white !important;
+@media (max-width: 767px) {
+  .maplibregl-ctrl-zoom-in,
+  .maplibregl-ctrl-zoom-out {
+    display: none !important;
+  }
 }
-
-/* Custom marker styles */
-.cafe-marker-sunny {
-  background: #f59e0b;
-  border: 2px solid #d97706;
-  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.5);
-}
-
-.cafe-marker-partial {
-  background: #fb8c00;
-  border: 2px solid #e65100;
-  box-shadow: 0 2px 8px rgba(251, 140, 0, 0.4);
-}
-
-.cafe-marker-shady {
-  background: #78909c;
-  border: 2px solid #546e7a;
-  box-shadow: 0 2px 6px rgba(120, 144, 156, 0.4);
-}
-
-/* Cafe tooltip */
-.leaflet-cafe-tooltip {
-  background: white;
-  border: 1px solid #e7e5e4 !important;
-  border-radius: 6px !important;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
-  font-family: 'DM Sans', sans-serif !important;
-  font-size: 12px !important;
-  font-weight: 500 !important;
-  color: #1c1917 !important;
-  padding: 3px 8px !important;
-  white-space: nowrap;
-}
-.leaflet-cafe-tooltip::before { display: none !important; }
 
 /* Status badge animations */
 @keyframes sunPulse {
@@ -176,10 +141,6 @@ aside ::-webkit-scrollbar-track {
   }
 }
 
-/* Hide Leaflet attribution everywhere (moved to Impressum) */
-.leaflet-control-attribution {
-  display: none !important;
-}
 
 /* Location dot pulse */
 @keyframes locationPulse {
