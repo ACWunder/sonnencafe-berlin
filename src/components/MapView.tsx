@@ -534,7 +534,7 @@ export function MapView({
           id: "shadows",
           type: "raster",
           source: "shadow-source",
-          paint: { "raster-opacity": 0.55, "raster-resampling": "nearest" },
+          paint: { "raster-opacity": 0.55 },
         }, before);
 
         map.addLayer({
