@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { format } from "date-fns";
-import { Sun, Search, MapPin, X, ExternalLink, Info, Menu, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { Sun, Search, MapPin, X, ExternalLink, Info, Menu } from "lucide-react";
 import type { Cafe, TimeState, SunTimeline, SunTimelineData } from "@/types";
 import { MapView } from "@/components/MapView";
 import { InstallBanner } from "@/components/InstallBanner";
@@ -87,18 +87,31 @@ export default function Home() {
 
         <div className="w-px h-4 bg-zinc-100 mx-0.5 shrink-0" />
 
-        <DatePicker value={timeState.date} onChange={(d) => setTimeState((s) => ({ ...s, date: d }))} />
-        <TimePicker value={timeState.time} onChange={(t) => setTimeState((s) => ({ ...s, time: t }))} />
+        {/* Date */}
+        <input
+          type="date"
+          value={timeState.date}
+          onChange={(e) => setTimeState((s) => ({ ...s, date: e.target.value }))}
+          className="text-[11px] font-body text-zinc-600 border border-zinc-200 rounded-[8px] px-2 py-1 bg-zinc-50/80 focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-300 transition-all cursor-pointer min-w-0 shrink"
+        />
 
-        {/* Now */}
+        {/* Time */}
+        <input
+          type="time"
+          value={timeState.time}
+          onChange={(e) => setTimeState((s) => ({ ...s, time: e.target.value }))}
+          className="text-[11px] font-body text-zinc-600 border border-zinc-200 rounded-[8px] px-2 py-1 bg-zinc-50/80 focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-300 transition-all cursor-pointer min-w-0 shrink"
+        />
+
+        {/* Now button — icon only on mobile, icon+text on desktop */}
         <button
           onClick={() => {
             const now = new Date();
             setTimeState({ date: format(now, "yyyy-MM-dd"), time: format(now, "HH:mm") });
           }}
-          className="text-[11px] font-body font-semibold bg-gradient-to-br from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white rounded-[8px] transition-all shadow-sm shadow-amber-200/60 active:scale-95 shrink-0 px-2.5 py-1"
+          className="flex items-center gap-1 bg-gradient-to-br from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white font-body font-semibold rounded-[8px] transition-all shadow-sm shadow-amber-200/60 active:scale-95 shrink-0 px-2 py-1"
         >
-          Now
+          <span className="text-[11px]">Now</span>
         </button>
 
         <button
@@ -387,155 +400,6 @@ export default function Home() {
 
         </main>
       </div>
-    </div>
-  );
-}
-
-// ─── Date picker ─────────────────────────────────────────────────────────────
-const MONTH_NAMES = ["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
-const DAY_ABBR = ["Mo","Di","Mi","Do","Fr","Sa","So"];
-
-function DatePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const parts = value.split("-").map(Number);
-  const [open, setOpen] = useState(false);
-  const [viewYear, setViewYear] = useState(parts[0]);
-  const [viewMonth, setViewMonth] = useState(parts[1] - 1);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
-  const displayStr = `${parts[2].toString().padStart(2, "0")}.${parts[1].toString().padStart(2, "0")}.`;
-  const firstDayOfWeek = (new Date(viewYear, viewMonth, 1).getDay() + 6) % 7;
-  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-  const today = new Date();
-
-  function prevMonth() {
-    if (viewMonth === 0) { setViewMonth(11); setViewYear((y) => y - 1); }
-    else setViewMonth((m) => m - 1);
-  }
-  function nextMonth() {
-    if (viewMonth === 11) { setViewMonth(0); setViewYear((y) => y + 1); }
-    else setViewMonth((m) => m + 1);
-  }
-
-  return (
-    <div ref={ref} className="relative shrink-0">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className={`text-[11px] font-body text-zinc-600 border rounded-[8px] px-2.5 py-1 transition-all select-none whitespace-nowrap ${open ? "bg-amber-50/60 border-amber-200" : "bg-zinc-50/80 border-zinc-200 hover:bg-amber-50/60 hover:border-amber-200"}`}
-      >
-        {displayStr}
-      </button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1.5 z-[10000] bg-white border border-zinc-100 rounded-2xl shadow-xl shadow-zinc-200/60 p-3" style={{ width: 196 }}>
-          {/* Month nav */}
-          <div className="flex items-center justify-between mb-2">
-            <button onClick={prevMonth} className="w-7 h-7 flex items-center justify-center text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 rounded-xl transition-all">
-              <ChevronLeft className="w-3.5 h-3.5" />
-            </button>
-            <span className="text-[11px] font-body font-semibold text-zinc-700">{MONTH_NAMES[viewMonth]} {viewYear}</span>
-            <button onClick={nextMonth} className="w-7 h-7 flex items-center justify-center text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 rounded-xl transition-all">
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-          {/* Day headers */}
-          <div className="grid grid-cols-7 mb-1">
-            {DAY_ABBR.map((d) => (
-              <div key={d} className="text-center text-[9px] font-body font-medium text-zinc-300">{d}</div>
-            ))}
-          </div>
-          {/* Day grid */}
-          <div className="grid grid-cols-7 gap-y-0.5">
-            {Array.from({ length: firstDayOfWeek }, (_, i) => <div key={`pad-${i}`} />)}
-            {Array.from({ length: daysInMonth }, (_, i) => {
-              const day = i + 1;
-              const dateStr = `${viewYear}-${(viewMonth + 1).toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
-              const isSelected = dateStr === value;
-              const isToday = day === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear();
-              return (
-                <button
-                  key={day}
-                  onClick={() => { onChange(dateStr); setOpen(false); }}
-                  className={`h-7 flex items-center justify-center text-[11px] font-body rounded-lg transition-all ${
-                    isSelected
-                      ? "bg-gradient-to-br from-amber-400 to-orange-400 text-white font-semibold shadow-sm shadow-amber-200"
-                      : isToday
-                      ? "text-amber-500 font-semibold hover:bg-amber-50"
-                      : "text-zinc-600 hover:bg-zinc-50"
-                  }`}
-                >
-                  {day}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Time picker ──────────────────────────────────────────────────────────────
-function TimePicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const [h, m] = value.split(":").map(Number);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
-  const set = (newH: number, newM: number) => {
-    const hh = ((newH % 24) + 24) % 24;
-    const mm = ((newM % 60) + 60) % 60;
-    onChange(`${hh.toString().padStart(2, "0")}:${mm.toString().padStart(2, "0")}`);
-  };
-
-  function Stepper({ val, onUp, onDown }: { val: number; onUp: () => void; onDown: () => void }) {
-    return (
-      <div className="flex flex-col items-center gap-0.5">
-        <button onClick={onUp} className="w-9 h-8 flex items-center justify-center text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 rounded-xl transition-all active:scale-90">
-          <ChevronUp className="w-4 h-4" />
-        </button>
-        <div className="w-10 h-10 flex items-center justify-center text-[18px] font-body font-semibold text-zinc-800 tabular-nums bg-zinc-50 rounded-xl select-none">
-          {val.toString().padStart(2, "0")}
-        </div>
-        <button onClick={onDown} className="w-9 h-8 flex items-center justify-center text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 rounded-xl transition-all active:scale-90">
-          <ChevronDown className="w-4 h-4" />
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div ref={ref} className="relative shrink-0">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className={`text-[11px] font-body text-zinc-600 border rounded-[8px] px-2.5 py-1 transition-all select-none tabular-nums ${open ? "bg-amber-50/60 border-amber-200" : "bg-zinc-50/80 border-zinc-200 hover:bg-amber-50/60 hover:border-amber-200"}`}
-      >
-        {value}
-      </button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1.5 z-[10000] bg-white border border-zinc-100 rounded-2xl shadow-xl shadow-zinc-200/60 p-3">
-          <div className="flex items-center gap-1.5">
-            <Stepper val={h} onUp={() => set(h + 1, m)} onDown={() => set(h - 1, m)} />
-            <span className="text-[20px] font-body font-bold text-zinc-300 mb-0.5 select-none">:</span>
-            <Stepper val={m} onUp={() => set(h, m + 1)} onDown={() => set(h, m - 1)} />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
