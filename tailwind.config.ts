@@ -9,8 +9,8 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        display: ["'Playfair Display'", "Georgia", "serif"],
-        body: ["'DM Sans'", "sans-serif"],
+        display: ["'Fraunces'", "Georgia", "serif"],
+        body: ["'Figtree'", "sans-serif"],
         mono: ["'DM Mono'", "monospace"],
       },
       colors: {

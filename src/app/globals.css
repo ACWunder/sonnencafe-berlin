@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Figtree:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -22,7 +22,7 @@ html {
 }
 
 body {
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Figtree', sans-serif;
   background-color: #fafaf9;
   color: #1c1917;
   -webkit-font-smoothing: antialiased;
@@ -44,7 +44,7 @@ body {
 
 /* MapLibre overrides */
 .maplibregl-map {
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Figtree', sans-serif;
   border-radius: 12px;
 }
 
@@ -57,7 +57,7 @@ body {
 /* Style zoom controls to match the app */
 .maplibregl-ctrl-zoom-in,
 .maplibregl-ctrl-zoom-out {
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Figtree', sans-serif;
 }
 
 @media (max-width: 767px) {

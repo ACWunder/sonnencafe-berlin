@@ -813,10 +813,10 @@ function SunCompass({ timeState, onNorth }: { timeState: TimeState; onNorth?: ()
         <circle cx={r} cy={r} r={innerR * 0.67} fill="none" stroke="#93c5fd" strokeWidth="0.5" strokeDasharray="3,3" />
         <line x1={r} y1={pad / 2} x2={r} y2={size - pad / 2} stroke="#bfdbfe" strokeWidth="0.5" />
         <line x1={pad / 2} y1={r} x2={size - pad / 2} y2={r} stroke="#bfdbfe" strokeWidth="0.5" />
-        <text x={r} y={5}          textAnchor="middle" fontSize="5" fill="#64748b" fontFamily="DM Sans, sans-serif" fontWeight="600">N</text>
-        <text x={r} y={size - 1}   textAnchor="middle" fontSize="5" fill="#64748b" fontFamily="DM Sans, sans-serif" fontWeight="600">S</text>
-        <text x={3}          y={r + 2} textAnchor="middle" fontSize="5" fill="#64748b" fontFamily="DM Sans, sans-serif" fontWeight="600">W</text>
-        <text x={size - 3}   y={r + 2} textAnchor="middle" fontSize="5" fill="#64748b" fontFamily="DM Sans, sans-serif" fontWeight="600">O</text>
+        <text x={r} y={5}          textAnchor="middle" fontSize="5" fill="#64748b" fontFamily="Figtree, sans-serif" fontWeight="600">N</text>
+        <text x={r} y={size - 1}   textAnchor="middle" fontSize="5" fill="#64748b" fontFamily="Figtree, sans-serif" fontWeight="600">S</text>
+        <text x={3}          y={r + 2} textAnchor="middle" fontSize="5" fill="#64748b" fontFamily="Figtree, sans-serif" fontWeight="600">W</text>
+        <text x={size - 3}   y={r + 2} textAnchor="middle" fontSize="5" fill="#64748b" fontFamily="Figtree, sans-serif" fontWeight="600">O</text>
         {isUp ? (
           <>
             <circle cx={sx} cy={sy} r={5} fill="#fde68a" opacity="0.5" />
