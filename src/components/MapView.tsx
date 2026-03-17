@@ -743,7 +743,10 @@ export function MapView({
 
       {/* Legend + compass stacked bottom-left */}
       <div className="absolute z-[500] flex flex-col gap-2 items-start" style={{ bottom: "24px", left: "12px" }}>
-        <SunCompass timeState={timeState} />
+        <SunCompass
+          timeState={timeState}
+          onNorth={() => mapInstanceRef.current?.easeTo({ bearing: 0, duration: 600 })}
+        />
         <Legend />
       </div>
       <SunInfoOverlay timeState={timeState} />
@@ -779,7 +782,7 @@ function Legend() {
 }
 
 // ─── sun compass ──────────────────────────────────────────────────────────────
-function SunCompass({ timeState }: { timeState: TimeState }) {
+function SunCompass({ timeState, onNorth }: { timeState: TimeState; onNorth?: () => void }) {
   const date = new Date(`${timeState.date}T${timeState.time}:00`);
   const pos  = getSunPosition(NEUBAU_CENTER[0], NEUBAU_CENTER[1], date);
   const isUp = pos.altitudeDeg > 0;
@@ -794,7 +797,11 @@ function SunCompass({ timeState }: { timeState: TimeState }) {
   const sy           = r - distFraction * innerR * Math.cos(azRad);
 
   return (
-    <div className="bg-white/90 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-lg shadow-zinc-200/40 p-2 inline-flex">
+    <div
+      onClick={onNorth}
+      className="bg-white/90 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-lg shadow-zinc-200/40 p-2 inline-flex cursor-pointer hover:border-zinc-200 active:scale-95 transition-transform"
+      title="Karte nach Norden ausrichten"
+    >
       <svg width={size} height={size}>
         <defs>
           <radialGradient id="skyGrad" cx="50%" cy="50%" r="50%">
