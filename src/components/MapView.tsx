@@ -25,6 +25,24 @@ const FALLBACK_HEIGHT = 18;
 // OpenFreeMap positron — free, no API key, clean light style
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/positron";
 
+// Shadow canvas: pre-rendered at a fixed resolution and fed to MapLibre as
+// a raster image source. A single ctx.fill() call on the full path produces
+// the union of all shadow polygons — overlapping areas are filled only once
+// so opacity never accumulates even where building shadows stack.
+const SHADOW_W    = 512;
+const _cosLat     = Math.cos(MAP_CENTER[0] * Math.PI / 180);
+const SHADOW_H    = Math.round(
+  SHADOW_W * (DISTRICT_BOUNDS.north - DISTRICT_BOUNDS.south) /
+  ((DISTRICT_BOUNDS.east - DISTRICT_BOUNDS.west) * _cosLat),
+);
+// MapLibre image-source corner order: top-left, top-right, bottom-right, bottom-left
+const SHADOW_COORDS: [[number,number],[number,number],[number,number],[number,number]] = [
+  [DISTRICT_BOUNDS.west, DISTRICT_BOUNDS.north],
+  [DISTRICT_BOUNDS.east, DISTRICT_BOUNDS.north],
+  [DISTRICT_BOUNDS.east, DISTRICT_BOUNDS.south],
+  [DISTRICT_BOUNDS.west, DISTRICT_BOUNDS.south],
+];
+
 // ─── types ────────────────────────────────────────────────────────────────────
 
 interface MapViewProps {
@@ -154,57 +172,46 @@ function computeViewportShadows(
   }
 }
 
-// ─── shadow GeoJSON (replaces canvas pre-bake; MapLibre renders via WebGL) ────
-// Called once per time change. Returns all shadow polygons as a GeoJSON
-// FeatureCollection; MapLibre clips and tiles on a Worker thread so the
-// main thread stays free and pan/zoom are unaffected.
+// ─── shadow canvas renderer ───────────────────────────────────────────────────
+// Draws all shadow polygons onto a single canvas with one ctx.fill() call.
+// Because the entire path is filled at once, overlapping building shadows
+// produce no opacity stacking — the result is a flat uniform dark layer.
 
-function buildShadowGeoJSON(
+function renderShadowCanvas(
+  canvas: HTMLCanvasElement,
   allBuildings: BuildingFeature[],
   timeState: TimeState,
-): { type: "FeatureCollection"; features: object[] } {
+) {
+  const ctx    = canvas.getContext("2d")!;
   const date   = new Date(`${timeState.date}T${timeState.time}:00`);
   const sunPos = getSunPosition(NEUBAU_CENTER[0], NEUBAU_CENTER[1], date);
 
-  // At night render a single district-sized rectangle
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#334155";
+
   if (sunPos.altitudeDeg <= 0) {
-    const p = 0.01;
-    return {
-      type: "FeatureCollection",
-      features: [{
-        type: "Feature",
-        geometry: {
-          type: "Polygon",
-          coordinates: [[
-            [DISTRICT_BOUNDS.west - p, DISTRICT_BOUNDS.south - p],
-            [DISTRICT_BOUNDS.east + p, DISTRICT_BOUNDS.south - p],
-            [DISTRICT_BOUNDS.east + p, DISTRICT_BOUNDS.north + p],
-            [DISTRICT_BOUNDS.west - p, DISTRICT_BOUNDS.north + p],
-            [DISTRICT_BOUNDS.west - p, DISTRICT_BOUNDS.south - p],
-          ]],
-        },
-        properties: {},
-      }],
-    };
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    return;
   }
 
-  const features: object[] = [];
+  ctx.beginPath();
   for (const b of allBuildings) {
     const shadow = calcShadowPolygon(
       b.polygon, b.height ?? FALLBACK_HEIGHT,
       sunPos.altitudeDeg, sunPos.azimuthDeg,
     );
     if (shadow.length < 3) continue;
-    // GeoJSON uses [lng, lat]; close the ring
-    const ring = (shadow as [number, number][]).map(([lat, lng]) => [lng, lat]);
-    ring.push(ring[0]);
-    features.push({
-      type: "Feature",
-      geometry: { type: "Polygon", coordinates: [ring] },
-      properties: {},
-    });
+    let first = true;
+    for (const [lat, lng] of shadow as [number, number][]) {
+      // Equirectangular projection — negligible error for a ~6 km area
+      const x = (lng - DISTRICT_BOUNDS.west)  / (DISTRICT_BOUNDS.east  - DISTRICT_BOUNDS.west)  * canvas.width;
+      const y = (DISTRICT_BOUNDS.north - lat)  / (DISTRICT_BOUNDS.north - DISTRICT_BOUNDS.south) * canvas.height;
+      if (first) { ctx.moveTo(x, y); first = false; }
+      else         ctx.lineTo(x, y);
+    }
+    ctx.closePath();
   }
-  return { type: "FeatureCollection", features };
+  ctx.fill(); // single fill → union of all polygons, no opacity stacking
 }
 
 // Flip [lat, lng] polygon to GeoJSON [lng, lat] and close the ring
@@ -229,6 +236,7 @@ export function MapView({
   const mapReadyRef    = useRef(false);  // true once map 'load' event fired
 
   const shadowPolygonsRef = useRef<[number, number][][]>([]);
+  const shadowCanvasRef   = useRef<HTMLCanvasElement | null>(null);
   const buildingCacheRef  = useRef<Map<number, BuildingFeature>>(new Map());
   const sunGenRef         = useRef(0);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -346,6 +354,16 @@ export function MapView({
     schedule(processChunk);
   }
 
+  // Render shadow canvas and push it to the MapLibre image source.
+  function updateShadowSource(allBuildings: BuildingFeature[], ts: TimeState) {
+    const canvas = shadowCanvasRef.current;
+    const map    = mapInstanceRef.current;
+    if (!canvas || !map || !mapReadyRef.current) return;
+    renderShadowCanvas(canvas, allBuildings, ts);
+    const source = map.getSource("shadow-source") as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+    source?.updateImage({ url: canvas.toDataURL("image/png"), coordinates: SHADOW_COORDS });
+  }
+
   // Recompute viewport shadow polygons → update café dots. Cheap; called on moveend.
   function refreshViewportShadows() {
     const all = Array.from(buildingCacheRef.current.values());
@@ -377,10 +395,7 @@ export function MapView({
         }
 
         // Build visual shadow layer and compute initial café statuses
-        const shadowSource = map.getSource("shadow-source");
-        if (shadowSource) {
-          shadowSource.setData(buildShadowGeoJSON(buildings, timeStateRef.current));
-        }
+        updateShadowSource(buildings, timeStateRef.current);
         computeViewportShadows(
           getViewportBuildings(buildings),
           timeStateRef.current,
@@ -437,6 +452,20 @@ export function MapView({
         if (!mounted) return;
         mapReadyRef.current = true;
 
+        // Find the first symbol layer in the base style (road/place labels, icons).
+        // All our custom layers are inserted before it so labels always render on top.
+        const firstSymbolId = map.getStyle().layers.find(
+          (l: { type: string }) => l.type === "symbol"
+        )?.id;
+        const before = firstSymbolId; // undefined is fine — appends to end if no symbols
+
+        // ── shadow canvas ──────────────────────────────────────────────────
+
+        const shadowCanvas = document.createElement("canvas");
+        shadowCanvas.width  = SHADOW_W;
+        shadowCanvas.height = SHADOW_H;
+        shadowCanvasRef.current = shadowCanvas;
+
         // ── sources ────────────────────────────────────────────────────────
 
         map.addSource("green-areas-source", {
@@ -463,9 +492,12 @@ export function MapView({
           },
         });
 
+        // Shadow source: raster image from the offscreen canvas.
+        // Image sources avoid WebGL fill-opacity accumulation from overlapping polygons.
         map.addSource("shadow-source", {
-          type: "geojson",
-          data: { type: "FeatureCollection", features: [] },
+          type: "image",
+          url: shadowCanvas.toDataURL("image/png"), // blank initially
+          coordinates: SHADOW_COORDS,
         });
 
         map.addSource("buildings-source", {
@@ -478,42 +510,44 @@ export function MapView({
           data: { type: "FeatureCollection", features: [] },
         });
 
-        // ── layers (z-order: bottom → top) ────────────────────────────────
+        // ── layers (z-order: bottom → top, all inserted before base labels) ─
 
         map.addLayer({
           id: "green-areas",
           type: "fill",
           source: "green-areas-source",
           paint: { "fill-color": "#86efac", "fill-opacity": 0.55 },
-        });
+        }, before);
 
         map.addLayer({
           id: "sunny-overlay",
           type: "fill",
           source: "sunny-overlay-source",
           paint: { "fill-color": "#fde68a", "fill-opacity": 0.38 },
-        });
+        }, before);
 
+        // Raster shadow layer — opacity here is the only transparency applied;
+        // the canvas itself is fully opaque dark pixels on transparent background.
         map.addLayer({
           id: "shadows",
-          type: "fill",
+          type: "raster",
           source: "shadow-source",
-          paint: { "fill-color": "#334155", "fill-opacity": 0.55 },
-        });
+          paint: { "raster-opacity": 0.55 },
+        }, before);
 
         map.addLayer({
           id: "buildings-fill",
           type: "fill",
           source: "buildings-source",
           paint: { "fill-color": "#e2e8f0", "fill-opacity": 1.0 },
-        });
+        }, before);
 
         map.addLayer({
           id: "buildings-outline",
           type: "line",
           source: "buildings-source",
           paint: { "line-color": "#94a3b8", "line-width": 0.8 },
-        });
+        }, before);
 
         // Café dots — color + size driven by GeoJSON properties
         map.addLayer({
@@ -531,7 +565,7 @@ export function MapView({
             "circle-stroke-width": ["case", ["get", "isSelected"], 2.5, 0],
             "circle-stroke-color": "#ffffff",
           },
-        });
+        }, before);
 
         // Invisible 32 px hit area so cafés are easy to tap on mobile
         map.addLayer({
@@ -543,7 +577,7 @@ export function MapView({
             "circle-opacity": 0,
             "circle-stroke-opacity": 0,
           },
-        });
+        }, before);
 
         // ── interactions ──────────────────────────────────────────────────
 
@@ -599,10 +633,7 @@ export function MapView({
     if (all.length === 0) return;
 
     // Rebuild full visual shadow layer
-    const shadowSource = map.getSource("shadow-source");
-    if (shadowSource) {
-      shadowSource.setData(buildShadowGeoJSON(all, timeState));
-    }
+    updateShadowSource(all, timeState);
 
     // Recompute viewport shadow polygons + café dots + sun timelines
     computeViewportShadows(getViewportBuildings(all), timeState, shadowPolygonsRef.current);

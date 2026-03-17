@@ -440,7 +440,7 @@ export default function Home() {
             className="bottom-sheet md:hidden absolute bottom-0 left-0 right-0 z-20 bg-white rounded-t-3xl shadow-2xl flex flex-col"
             style={{
               height: "68vh",
-              transform: sheetExpanded ? "translateY(0)" : "translateY(calc(68vh - 76px))",
+              transform: sheetExpanded ? "translateY(0)" : "translateY(calc(68vh - 40px))",
               transition: "transform 0.38s cubic-bezier(0.16, 1, 0.3, 1)",
               pointerEvents: sheetExpanded ? "auto" : "none",
             }}
