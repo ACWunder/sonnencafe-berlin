@@ -583,7 +583,7 @@ function SunTimelineBar({
       <div className="relative rounded-full" style={{ height: barH, background: buildSunGradient(inSun) }}>
         {nowVisible && (
           <div
-            className="absolute rounded-full bg-zinc-500"
+            className={`absolute rounded-full ${isSunny ? "bg-orange-400" : "bg-zinc-500"}`}
             style={{
               width: "2px",
               height: tickH,

@@ -320,6 +320,24 @@ export function MapView({
       } else {
         onSunRemainingRef.current(remaining);
         onSunTimelineRef.current(timelines);
+        // Sync dot colors with the accurate calcSunRemaining result
+        const source = mapInstanceRef.current?.getSource("cafes-source");
+        if (source && mapReadyRef.current) {
+          const selId = selectedCafeRef.current?.id ?? null;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (source as any).setData({
+            type: "FeatureCollection",
+            features: allCafes.map((cafe) => ({
+              type: "Feature",
+              geometry: { type: "Point", coordinates: [cafe.lng, cafe.lat] },
+              properties: {
+                id: cafe.id, name: cafe.name,
+                inShadow: remaining[cafe.id] === null,
+                isSelected: cafe.id === selId,
+              },
+            })),
+          });
+        }
       }
     }
     schedule(processChunk);
