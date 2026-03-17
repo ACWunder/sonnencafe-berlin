@@ -448,66 +448,75 @@ function SelectedCafeCard({
     : "Aktuell im Schatten";
 
   return (
-    <div className="m-3 rounded-2xl overflow-hidden border border-zinc-100 shadow-xl shadow-zinc-200/40 shrink-0 bg-white cafe-card-enter">
+    <div className="m-3 rounded-[22px] overflow-hidden shrink-0 bg-white cafe-card-enter" style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.09), 0 1px 0 rgba(0,0,0,0.05)", border: "1px solid rgba(0,0,0,0.07)" }}>
 
-      {/* Card header */}
-      <div className={`px-4 pt-4 pb-3.5 ${isSunny
-        ? "bg-gradient-to-br from-amber-50 via-orange-50/60 to-white"
-        : "bg-gradient-to-br from-zinc-50 to-white"}`}
+      {/* Header */}
+      <div className={`relative px-4 pt-4 pb-4 ${isSunny
+        ? "bg-gradient-to-br from-amber-50 via-orange-50/50 to-white"
+        : "bg-gradient-to-br from-zinc-50/90 to-white"}`}
       >
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <h2 className="font-display font-bold text-zinc-900 text-[15px] leading-tight">
-              {cafe.name}
-            </h2>
-            {(cafe.address || cafe.district) && (
-              <div className="flex items-center gap-1 mt-1">
-                <MapPin className="w-3 h-3 text-zinc-400 shrink-0" />
-                <p className="text-[11px] text-zinc-500 font-body leading-none">
-                  {cafe.address || cafe.district}
-                </p>
-              </div>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            className="w-12 h-12 -m-3 rounded-full flex items-center justify-center shrink-0 mt-0.5 group"
-          >
-            <span className="w-6 h-6 rounded-full bg-white/80 group-hover:bg-zinc-100 border border-zinc-100 flex items-center justify-center text-zinc-400 group-hover:text-zinc-600 transition-all">
-              <X className="w-3 h-3" />
-            </span>
-          </button>
-        </div>
+        {/* Close */}
+        <button
+          onClick={onClose}
+          className="absolute top-3.5 right-3.5 w-7 h-7 rounded-full flex items-center justify-center text-zinc-400 hover:text-zinc-600 transition-all active:scale-90"
+          style={{ background: "rgba(0,0,0,0.06)" }}
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
 
-        {/* Sun pill */}
-        <div className={`inline-flex items-center gap-1.5 mt-2.5 px-2.5 py-1 rounded-full text-[11px] font-body font-medium ${
+        {/* Name */}
+        <h2 className="font-display font-bold text-zinc-900 text-[17px] leading-tight pr-10">
+          {cafe.name}
+        </h2>
+
+        {/* Address */}
+        {(cafe.address || cafe.district) && (
+          <div className="flex items-center gap-1.5 mt-1.5">
+            <MapPin className="w-3 h-3 text-zinc-400 shrink-0" />
+            <span className="text-[12px] text-zinc-500 font-body">{cafe.address || cafe.district}</span>
+          </div>
+        )}
+
+        {/* Sun badge */}
+        <div className={`inline-flex items-center gap-2 mt-3 px-3 py-1.5 rounded-xl text-[12px] font-body font-semibold ${
           isSunny
-            ? "bg-orange-100/80 text-orange-600"
-            : "bg-zinc-100 text-zinc-500"
-        }`}>
-          <div className={`w-1.5 h-1.5 rounded-full ${isSunny ? "bg-orange-400 sun-pulse" : "bg-zinc-400"}`} />
+            ? "bg-gradient-to-r from-amber-100/80 to-orange-100/80 text-amber-800"
+            : "text-zinc-500"
+        }`} style={!isSunny ? { background: "rgba(0,0,0,0.05)" } : {}}>
+          <span className={`w-2 h-2 rounded-full shrink-0 ${isSunny ? "bg-orange-400 sun-pulse" : "bg-zinc-400"}`} />
           {sunLabel}
         </div>
       </div>
 
-      {/* Sun timeline */}
+      {/* Timeline */}
       {timeline && (
-        <div className="px-4 pb-3 pt-1">
-          <p className="text-[9px] font-body text-zinc-400 uppercase tracking-widest mb-1.5" style={{ fontWeight: 700 }}>Heute</p>
+        <div className="px-4 pt-3 pb-3.5" style={{ borderTop: "1px solid rgba(0,0,0,0.05)" }}>
+          <p className="text-[9px] font-body text-zinc-400 uppercase tracking-widest mb-2" style={{ fontWeight: 700 }}>Heute</p>
           <SunTimelineBar timeline={timeline} currentMinute={currentMinute} isSunny={isSunny} thick />
         </div>
       )}
 
-      {/* Card footer */}
-      <div className="px-3 py-2.5 border-t border-zinc-50">
+      {/* Google Maps button */}
+      <div className="px-3 pb-3" style={{ borderTop: "1px solid rgba(0,0,0,0.05)" }}>
         <a
           href={mapsUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 w-full text-[12px] font-body font-medium text-zinc-500 hover:text-zinc-700 bg-zinc-50 hover:bg-zinc-100 border border-zinc-100 rounded-xl px-3 py-2 transition-all active:scale-[0.98]"
+          className="flex items-center gap-3 w-full mt-3 px-3 py-2.5 rounded-[14px] hover:bg-zinc-50 active:scale-[0.97] transition-all group"
+          style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.06)" }}
         >
-          <ExternalLink className="w-3.5 h-3.5" />
-          In Google Maps öffnen
+          {/* Maps pin icon */}
+          <div className="w-8 h-8 rounded-[10px] bg-white shadow-sm flex items-center justify-center shrink-0" style={{ border: "1px solid rgba(0,0,0,0.08)" }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#EA4335"/>
+              <circle cx="12" cy="9" r="2.5" fill="white"/>
+            </svg>
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-body font-semibold text-zinc-800 leading-none">In Maps öffnen</p>
+            <p className="text-[10px] font-body text-zinc-400 mt-0.5">Google Maps</p>
+          </div>
+          <ExternalLink className="w-3.5 h-3.5 text-zinc-300 group-hover:text-zinc-400 transition-colors shrink-0" />
         </a>
       </div>
     </div>
