@@ -448,14 +448,14 @@ function SelectedCafeCard({
     : "Aktuell im Schatten";
 
   return (
-    <div className={`m-3 rounded-2xl overflow-hidden border border-zinc-100 shadow-xl shadow-zinc-200/40 shrink-0 cafe-card-enter ${
-      isSunny
-        ? "bg-gradient-to-b from-amber-100 via-amber-50/60 to-white"
-        : "bg-gradient-to-b from-zinc-200 via-zinc-100/50 to-white"
-    }`}>
+    <div className="m-3 rounded-2xl overflow-hidden border border-zinc-100 shadow-xl shadow-zinc-200/40 shrink-0 bg-white cafe-card-enter">
 
       {/* Card header */}
-      <div className="px-4 pt-4 pb-3.5">
+      <div className={`px-4 pt-4 pb-3.5 ${
+        isSunny
+          ? "bg-gradient-to-b from-amber-100 via-amber-50 to-white"
+          : "bg-gradient-to-b from-zinc-200 via-zinc-100 to-white"
+      }`}>
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <h2 className="font-display font-bold text-zinc-900 text-[15px] leading-tight">
