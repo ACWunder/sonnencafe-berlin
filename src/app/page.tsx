@@ -21,11 +21,8 @@ export default function Home() {
   const [sunTimelines, setSunTimelines] = useState<SunTimelineData>({});
   const listRef = useRef<HTMLUListElement>(null);
 
-  // Mobile bottom sheet state
-  const [sheetExpanded, setSheetExpanded] = useState(false);
   const [showImpressum, setShowImpressum] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const dragStartY = useRef(0);
   const cardDragStartY = useRef(0);
 
   const handleSunRemaining = useCallback((data: Record<string, number | null>) => {
@@ -49,13 +46,6 @@ export default function Home() {
       .catch(() => {});
   }, []);
 
-  // Collapse sheet when a cafe is selected on mobile — card appears above it
-  useEffect(() => {
-    if (selectedCafe !== null) {
-      setSheetExpanded(false);
-    }
-  }, [selectedCafe]);
-
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     const list = q
@@ -78,74 +68,6 @@ export default function Home() {
     const [h, m] = timeState.time.split(":").map(Number);
     return h * 60 + m;
   })();
-
-  // Shared cafe list items renderer
-  const cafeListItems = (
-    <>
-      {filtered.length === 0 && (
-        <li className="p-6 text-[13px] text-zinc-300 font-body text-center">
-          Keine Ergebnisse
-        </li>
-      )}
-      {filtered.map((cafe) => {
-        const isSelected = selectedCafe?.id === cafe.id;
-        const mins = sunRemaining[cafe.id];
-        const isSunny = mins !== null && mins !== undefined;
-        const timeline = sunTimelines[cafe.id];
-
-        return (
-          <li key={cafe.id} data-cafe-id={cafe.id}>
-            <button
-              onClick={() => setSelectedCafe(isSelected ? null : cafe)}
-              className={`w-full text-left px-3 py-2.5 transition-all duration-150 border-l-2 ${
-                isSelected
-                  ? "bg-amber-50/60 border-amber-400"
-                  : "border-transparent hover:bg-zinc-50"
-              }`}
-            >
-              <div className="flex items-start gap-2.5">
-                {/* Sun dot */}
-                <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 transition-colors duration-300 ${
-                  isSunny ? "bg-orange-400" : "bg-zinc-200"
-                }`} />
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <p className={`text-[13px] font-body leading-snug truncate transition-colors ${
-                      isSelected ? "font-semibold text-zinc-900" : "text-zinc-700"
-                    }`}>
-                      {cafe.name}
-                    </p>
-                    {isSunny && (
-                      <span className="text-[10px] font-body font-medium text-orange-400 shrink-0">
-                        {mins! >= 240
-                          ? ">4h ☀"
-                          : mins! >= 60
-                          ? `${Math.floor(mins! / 60)}h${mins! % 60 > 0 ? `${mins! % 60}m` : ""} ☀`
-                          : `${mins}m ☀`}
-                      </span>
-                    )}
-                  </div>
-                  {(cafe.address || cafe.district) && (
-                    <p className="text-[11px] text-zinc-400 font-body mt-0.5 truncate">
-                      {cafe.address || cafe.district}
-                    </p>
-                  )}
-                  {timeline && (
-                    <SunTimelineBar
-                      timeline={timeline}
-                      currentMinute={currentMinute}
-                      isSunny={isSunny}
-                    />
-                  )}
-                </div>
-              </div>
-            </button>
-          </li>
-        );
-      })}
-    </>
-  );
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[#f7f6f3]">
@@ -249,7 +171,7 @@ export default function Home() {
                 </p>
                 <p className="text-[11px] text-zinc-400">
                   Kartenrendering via{" "}
-                  <a href="https://leafletjs.com" target="_blank" rel="noopener noreferrer" className="text-amber-500 hover:text-amber-600">Leaflet</a>
+                  <a href="https://maplibre.org" target="_blank" rel="noopener noreferrer" className="text-amber-500 hover:text-amber-600">MapLibre GL JS</a>
                 </p>
               </div>
             </div>
@@ -390,7 +312,49 @@ export default function Home() {
             </p>
           </div>
           <ul ref={listRef} className="flex-1 overflow-y-auto">
-            {cafeListItems}
+            {filtered.length === 0 && (
+              <li className="p-6 text-[13px] text-zinc-300 font-body text-center">Keine Ergebnisse</li>
+            )}
+            {filtered.map((cafe) => {
+              const isSelected = selectedCafe?.id === cafe.id;
+              const mins = sunRemaining[cafe.id];
+              const isSunny = mins !== null && mins !== undefined;
+              const timeline = sunTimelines[cafe.id];
+              return (
+                <li key={cafe.id} data-cafe-id={cafe.id}>
+                  <button
+                    onClick={() => setSelectedCafe(isSelected ? null : cafe)}
+                    className={`w-full text-left px-3 py-2.5 transition-all duration-150 border-l-2 ${
+                      isSelected ? "bg-amber-50/60 border-amber-400" : "border-transparent hover:bg-zinc-50"
+                    }`}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 transition-colors duration-300 ${isSunny ? "bg-orange-400" : "bg-zinc-200"}`} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className={`text-[13px] font-body leading-snug truncate transition-colors ${isSelected ? "font-semibold text-zinc-900" : "text-zinc-700"}`}>
+                            {cafe.name}
+                          </p>
+                          {isSunny && (
+                            <span className="text-[10px] font-body font-medium text-orange-400 shrink-0">
+                              {mins! >= 240 ? ">4h ☀" : mins! >= 60 ? `${Math.floor(mins! / 60)}h${mins! % 60 > 0 ? `${mins! % 60}m` : ""} ☀` : `${mins}m ☀`}
+                            </span>
+                          )}
+                        </div>
+                        {(cafe.address || cafe.district) && (
+                          <p className="text-[11px] text-zinc-400 font-body mt-0.5 truncate">
+                            {cafe.address || cafe.district}
+                          </p>
+                        )}
+                        {timeline && (
+                          <SunTimelineBar timeline={timeline} currentMinute={currentMinute} isSunny={isSunny} />
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </aside>
 
@@ -435,56 +399,6 @@ export default function Home() {
             </div>
           )}
 
-          {/* Mobile bottom sheet — hidden on desktop */}
-          <div
-            className="bottom-sheet md:hidden absolute bottom-0 left-0 right-0 z-20 bg-white rounded-t-3xl shadow-2xl flex flex-col"
-            style={{
-              height: "68vh",
-              transform: sheetExpanded ? "translateY(0)" : "translateY(calc(68vh - 40px))",
-              transition: "transform 0.38s cubic-bezier(0.16, 1, 0.3, 1)",
-              pointerEvents: sheetExpanded ? "auto" : "none",
-            }}
-          >
-            {/* Drag handle */}
-            <div
-              className="flex items-center justify-center pt-3 pb-2 shrink-0 cursor-pointer"
-              style={{ pointerEvents: "auto" }}
-              onClick={() => setSheetExpanded((v) => !v)}
-              onTouchStart={(e) => { dragStartY.current = e.touches[0].clientY; }}
-              onTouchEnd={(e) => {
-                const dy = e.changedTouches[0].clientY - dragStartY.current;
-                if (dy < -40) setSheetExpanded(true);
-                else if (dy > 40) setSheetExpanded(false);
-              }}
-            >
-              <div className="w-10 h-1 rounded-full bg-zinc-200" />
-            </div>
-
-            {/* Search */}
-            <div className="px-3 pt-2 pb-1 shrink-0">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-300 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="Café suchen…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-base font-body text-zinc-700 rounded-xl bg-zinc-50 border border-zinc-100 focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-300 transition-all placeholder:text-zinc-300"
-                />
-              </div>
-              <p className="text-[10px] text-zinc-300 mt-1 font-body px-0.5">
-                {filtered.length} {filtered.length === 1 ? "Café" : "Cafés"}
-                {search && ` · „${search}"`}
-              </p>
-            </div>
-
-            {/* Cafe list */}
-            <ul
-              className="bottom-sheet-list overflow-y-auto flex-1"
-            >
-              {cafeListItems}
-            </ul>
-          </div>
         </main>
       </div>
     </div>

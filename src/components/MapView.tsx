@@ -29,12 +29,12 @@ const MAP_STYLE = "https://tiles.openfreemap.org/styles/positron";
 // a raster image source. A single ctx.fill() call on the full path produces
 // the union of all shadow polygons — overlapping areas are filled only once
 // so opacity never accumulates even where building shadows stack.
-const SHADOW_W    = 512;
-const _cosLat     = Math.cos(MAP_CENTER[0] * Math.PI / 180);
-const SHADOW_H    = Math.round(
-  SHADOW_W * (DISTRICT_BOUNDS.north - DISTRICT_BOUNDS.south) /
-  ((DISTRICT_BOUNDS.east - DISTRICT_BOUNDS.west) * _cosLat),
-);
+//
+// Resolution matches SHADOW_RENDER_ZOOM=16 (same as the old Leaflet approach)
+// so shadow edges are crisp at zoom 16 and still sharp at zoom 17.
+const _ZOOM16_PX  = (Math.pow(2, 16) * 256) / 360; // pixels per degree at zoom 16
+const SHADOW_W    = Math.ceil((DISTRICT_BOUNDS.east - DISTRICT_BOUNDS.west) * _ZOOM16_PX); // ~1966
+const SHADOW_H    = Math.ceil((DISTRICT_BOUNDS.north - DISTRICT_BOUNDS.south) * _ZOOM16_PX); // ~2560
 // MapLibre image-source corner order: top-left, top-right, bottom-right, bottom-left
 const SHADOW_COORDS: [[number,number],[number,number],[number,number],[number,number]] = [
   [DISTRICT_BOUNDS.west, DISTRICT_BOUNDS.north],
