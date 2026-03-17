@@ -459,13 +459,25 @@ export function MapView({
         )?.id;
         const before = firstSymbolId; // undefined is fine — appends to end if no symbols
 
-        // ── filter place labels ────────────────────────────────────────────
-        // In OpenFreeMap positron, "label_other" is a catch-all that renders
-        // every place class not explicitly listed (city/country/state/town/village).
-        // That includes both "suburb" (= official Bezirke, keep) and
-        // "neighbourhood"/"quarter" (= Grätzl like Strozziggrund, hide).
-        // We replace the filter with the same match expression but add the
-        // unwanted classes to the exclusion list.
+        // ── fix bilingual labels + filter Grätzl ──────────────────────────
+        // All symbol layers in positron use this text-field pattern:
+        //   ["case", ["has","name:nonlatin"], concat(latin + " " + nonlatin), name]
+        // Vienna OSM data has Cyrillic/other-script transliterations on many
+        // streets, so labels render as "Mariahilfer Straße Марияхильфер штрасе" —
+        // looks like two maps stacked. Fix: override text-field on every symbol
+        // layer to show only the Latin name.
+        //
+        // Also hide neighbourhood/quarter place classes (Grätzl like Strozziggrund)
+        // by patching label_other's filter — suburb (official Bezirke) stays visible.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const latinOnly: any = ["coalesce", ["get", "name:latin"], ["get", "name_en"], ["get", "name"]];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const layer of map.getStyle().layers as any[]) {
+          if (layer.type !== "symbol") continue;
+          map.setLayoutProperty(layer.id, "text-field", latinOnly);
+        }
+
+        // Hide Grätzl (neighbourhood/quarter) from the catch-all place label layer
         map.setFilter("label_other", [
           "match", ["get", "class"],
           ["city", "continent", "country", "hamlet", "isolated_dwelling",
