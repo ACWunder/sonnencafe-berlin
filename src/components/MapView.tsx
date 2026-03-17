@@ -528,11 +528,13 @@ export function MapView({
 
         // Raster shadow layer — opacity here is the only transparency applied;
         // the canvas itself is fully opaque dark pixels on transparent background.
+        // raster-resampling: nearest prevents bilinear blur when zoomed in past
+        // the canvas resolution, keeping shadow edges crisp at all zoom levels.
         map.addLayer({
           id: "shadows",
           type: "raster",
           source: "shadow-source",
-          paint: { "raster-opacity": 0.55 },
+          paint: { "raster-opacity": 0.55, "raster-resampling": "nearest" },
         }, before);
 
         map.addLayer({

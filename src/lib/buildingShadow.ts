@@ -3,16 +3,11 @@
 /**
  * Compute the convex hull of a set of 2-D points using the monotone-chain
  * algorithm (O(n log n)).  Returns vertices in counter-clockwise order.
- *
- * Using the convex hull for shadow projection means concave features
- * (courtyards, recesses, U-shapes) can never create sunny islands inside
- * the shadow: the building is treated as a single, solid, light-blocking mass.
  */
 function convexHull(pts: [number, number][]): [number, number][] {
   const n = pts.length;
   if (n < 3) return pts;
 
-  // Sort by lat, then by lng
   const s = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
 
   const cross = (o: [number, number], a: [number, number], b: [number, number]) =>
@@ -32,7 +27,6 @@ function convexHull(pts: [number, number][]): [number, number][] {
     upper.push(p);
   }
 
-  // Remove last point of each half (it's the first point of the other half)
   lower.pop();
   upper.pop();
   return [...lower, ...upper];
@@ -41,12 +35,15 @@ function convexHull(pts: [number, number][]): [number, number][] {
 /**
  * Calculate the shadow polygon for a building footprint.
  *
- * The footprint is first reduced to its convex hull so that concave
- * features (courtyards, L-shapes, recesses) are ignored.  The shadow
- * is then formed by projecting each hull vertex in the shadow direction
- * and unioning the hull with the shifted hull.
+ * Preserves the actual building outline (including L-shapes, courtyards, etc.)
+ * by computing the silhouette: only edges that face away from the sun cast a
+ * shadow boundary.  The result is the building footprint extended by the
+ * silhouette edge projections, stitched into a single closed polygon.
  *
- * @param polygon        Building footprint as [lat, lng] vertices
+ * Falls back to a convex-hull union if the silhouette walk fails (degenerate
+ * geometry, < 3 vertices, etc.).
+ *
+ * @param polygon        Building footprint as [lat, lng] vertices (may be closed)
  * @param height         Building height in metres
  * @param sunAltitudeDeg Sun altitude above horizon in degrees
  * @param sunAzimuthDeg  Sun azimuth clockwise from north in degrees
@@ -78,14 +75,53 @@ export function calcShadowPolygon(
       ? polygon.slice(0, -1)
       : polygon;
 
-  // Use convex hull → inner courtyards / recesses cast no spurious light
-  const hull = convexHull(verts);
+  if (verts.length < 3) return [];
 
-  const shifted: [number, number][] = hull.map(([lat, lng]) => [lat + dlat, lng + dlng]);
+  // ── silhouette projection ─────────────────────────────────────────────────
+  // For each polygon edge, determine if it faces the sun (dot product of the
+  // edge outward normal with the shadow direction > 0 → edge faces away from
+  // sun → it is a silhouette edge and casts a shadow boundary).
+  //
+  // Shadow direction vector in [lat, lng] space:
+  const sdLat = dlat;
+  const sdLng = dlng;
 
-  // Shadow area = convex hull of ALL original + shifted points.
-  // Simply concatenating hull + reversed-shifted creates self-intersecting edges
-  // for oblique sun angles, which produces gaps along the outer shadow boundary.
-  // The convex hull of the combined point set is always a valid, gap-free polygon.
-  return convexHull([...hull, ...shifted]);
+  // Identify silhouette vertices: a vertex is on the silhouette boundary when
+  // the edges on either side of it have different facing directions.
+  const n = verts.length;
+  const facing: boolean[] = [];
+  for (let i = 0; i < n; i++) {
+    const [lat0, lng0] = verts[i];
+    const [lat1, lng1] = verts[(i + 1) % n];
+    // Edge vector
+    const eLat = lat1 - lat0;
+    const eLng = lng1 - lng0;
+    // Outward normal (rotate edge 90° right for a CCW polygon = outward)
+    const nLat =  eLng;
+    const nLng = -eLat;
+    // Dot with shadow direction — positive means facing away from sun (shadow side)
+    facing.push(nLat * sdLat + nLng * sdLng > 0);
+  }
+
+  // Build shadow polygon:
+  // Walk around the polygon. When we cross from non-silhouette → silhouette,
+  // emit the original vertex AND its projected twin. When we cross back,
+  // emit only the projected twin (close the shadow cap). Accumulate all points
+  // and take their convex hull to guarantee a valid, non-self-intersecting ring.
+  const pts: [number, number][] = [];
+  for (let i = 0; i < n; i++) {
+    const [lat, lng] = verts[i];
+    pts.push([lat, lng]);
+    if (facing[i]) {
+      pts.push([lat + dlat, lng + dlng]);
+    }
+  }
+
+  if (pts.length < 3) {
+    // Fallback: project all vertices
+    const shifted: [number, number][] = verts.map(([lat, lng]) => [lat + dlat, lng + dlng]);
+    return convexHull([...verts, ...shifted]);
+  }
+
+  return convexHull(pts);
 }

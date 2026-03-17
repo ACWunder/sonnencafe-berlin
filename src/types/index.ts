@@ -60,6 +60,7 @@ export interface OverpassCafe {
   lat?: number;
   lon?: number;
   center?: { lat: number; lon: number };
+  nodes?: number[];   // way constituent node IDs
   tags?: Record<string, string>;
 }
 

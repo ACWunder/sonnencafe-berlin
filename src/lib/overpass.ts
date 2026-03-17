@@ -34,7 +34,7 @@ export function buildOverpassQuery(): string {
 );
 out body;
 >;
-out skel qt;
+out body qt;
   `.trim();
 }
 
@@ -56,13 +56,70 @@ export async function fetchCafesFromOverpass(): Promise<Cafe[]> {
   return parseOverpassCafes(data);
 }
 
+// Tags that identify a café-type element (as opposed to plain geometry nodes
+// or entrance nodes that arrive in the response via `>; out body qt`)
+function isCafeElement(tags: Record<string, string>): boolean {
+  return (
+    tags.amenity === "cafe" ||
+    tags.shop === "coffee" ||
+    (tags.amenity === "restaurant" &&
+      /coffee_shop|kaffeehaus|cafe/i.test(tags.cuisine ?? ""))
+  );
+}
+
+// For a Way polygon, find the midpoint of the edge that is farthest from the
+// polygon's centroid.  This selects the building's most exterior face —
+// typically the street-facing facade — without needing any road data.
+function streetFacingPoint(
+  nodeIds: number[],
+  nodeCoords: Map<number, { lat: number; lon: number }>,
+  centLat: number,
+  centLon: number,
+): { lat: number; lon: number } | null {
+  const pts = nodeIds
+    .map((id) => nodeCoords.get(id))
+    .filter((p): p is { lat: number; lon: number } => p !== undefined);
+
+  if (pts.length < 2) return null;
+
+  let bestDist = -1;
+  let best: { lat: number; lon: number } | null = null;
+
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    const midLat = (a.lat + b.lat) / 2;
+    const midLon = (a.lon + b.lon) / 2;
+    // Use degree-space distance (equirectangular, fine for <1 km)
+    const dist = Math.hypot(midLat - centLat, midLon - centLon);
+    if (dist > bestDist) {
+      bestDist = dist;
+      best = { lat: midLat, lon: midLon };
+    }
+  }
+
+  return best;
+}
+
 function parseOverpassCafes(data: OverpassResponse): Cafe[] {
+  // Build lookup tables from constituent nodes returned by `>; out body qt`.
+  // These nodes have coordinates; entrance-tagged ones also carry tags.
+  const nodeCoords = new Map<number, { lat: number; lon: number }>();
+  const entranceNodes = new Set<number>();
+
+  for (const el of data.elements) {
+    if (el.type === "node" && el.lat !== undefined && el.lon !== undefined) {
+      nodeCoords.set(el.id, { lat: el.lat, lon: el.lon });
+      if (el.tags?.entrance) entranceNodes.add(el.id);
+    }
+  }
+
   const seen = new Set<string>();
 
   return data.elements
     .filter((el) => {
-      // Only elements that have tags (nodes from `>` have no tags)
-      if (!el.tags) return false;
+      // Keep only real café-type elements (exclude plain geometry / entrance nodes)
+      if (!el.tags || !isCafeElement(el.tags)) return false;
       const lat = el.lat ?? el.center?.lat;
       const lon = el.lon ?? el.center?.lon;
       return lat !== undefined && lon !== undefined;
@@ -74,9 +131,26 @@ function parseOverpassCafes(data: OverpassResponse): Cafe[] {
       return true;
     })
     .map((el) => {
-      const lat = el.lat ?? el.center!.lat;
-      const lon = el.lon ?? el.center!.lon;
+      // Start with OSM-provided position (node: direct coords; way: centroid)
+      let lat = el.lat ?? el.center!.lat;
+      let lon = el.lon ?? el.center!.lon;
       const tags = el.tags ?? {};
+
+      // Refine position for Way elements:
+      if (el.type === "way" && el.nodes?.length) {
+        // Priority 1 — OSM entrance node (most precise: actual door position)
+        const entranceId = el.nodes.find((id) => entranceNodes.has(id));
+        if (entranceId) {
+          const c = nodeCoords.get(entranceId);
+          if (c) { lat = c.lat; lon = c.lon; }
+        } else {
+          // Priority 2 — midpoint of the most exterior building edge
+          // (street-facing facade heuristic, no road data needed)
+          const exterior = streetFacingPoint(el.nodes, nodeCoords, lat, lon);
+          if (exterior) { lat = exterior.lat; lon = exterior.lon; }
+        }
+        // Priority 3 — fall through to centroid (already set above)
+      }
 
       const district = guessDistrict(lat, lon);
       const name =
@@ -85,10 +159,7 @@ function parseOverpassCafes(data: OverpassResponse): Cafe[] {
         tags["brand"] ||
         `${tags.amenity ?? "Café"} (unbenannt)`;
 
-      const addr = [
-        tags["addr:street"],
-        tags["addr:housenumber"],
-      ]
+      const addr = [tags["addr:street"], tags["addr:housenumber"]]
         .filter(Boolean)
         .join(" ");
 
