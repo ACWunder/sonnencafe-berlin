@@ -253,7 +253,7 @@ export default function Home() {
               {filtered.map((cafe) => {
                 const isSelected = selectedCafe?.id === cafe.id;
                 const mins = sunRemaining[cafe.id];
-                const isSunny = mins !== null && mins !== undefined && mins > 0;
+                const isSunny = mins !== null && mins !== undefined;
                 const timeline = sunTimelines[cafe.id];
                 return (
                   <li key={cafe.id}>
@@ -336,7 +336,7 @@ export default function Home() {
             {filtered.map((cafe) => {
               const isSelected = selectedCafe?.id === cafe.id;
               const mins = sunRemaining[cafe.id];
-              const isSunny = mins !== null && mins !== undefined && mins > 0;
+              const isSunny = mins !== null && mins !== undefined;
               const timeline = sunTimelines[cafe.id];
               return (
                 <li key={cafe.id} data-cafe-id={cafe.id}>
@@ -437,7 +437,7 @@ function SelectedCafeCard({
   currentMinute: number;
   onClose: () => void;
 }) {
-  const isSunny = mins !== null && mins !== undefined && mins > 0;
+  const isSunny = mins !== null && mins !== undefined;
   const mapsQuery = cafe.address
     ? [cafe.name, cafe.address, "Wien"].join(", ")
     : cafe.name;
@@ -602,7 +602,7 @@ function SunTimelineBar({
       <div className="relative rounded-full" style={{ height: barH, background: buildSunGradient(inSun) }}>
         {nowVisible && (
           <div
-            className={`absolute rounded-full ${isSunny ? "bg-orange-400" : "bg-zinc-500"}`}
+            className="absolute rounded-full bg-zinc-500"
             style={{
               width: "2px",
               height: tickH,

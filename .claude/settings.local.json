@@ -12,7 +12,15 @@
       "Bash(git commit:*)",
       "Bash(git revert:*)",
       "Bash(npm install:*)",
-      "Bash(npm list:*)"
+      "Bash(npm list:*)",
+      "WebFetch(domain:tiles.openfreemap.org)",
+      "WebSearch",
+      "WebFetch(domain:commons.wikimedia.org)",
+      "WebFetch(domain:www.svgrepo.com)",
+      "WebFetch(domain:upload.wikimedia.org)",
+      "WebFetch(domain:www.logo.wine)",
+      "WebFetch(domain:logowik.com)",
+      "WebFetch(domain:uxwing.com)"
     ]
   }
 }
