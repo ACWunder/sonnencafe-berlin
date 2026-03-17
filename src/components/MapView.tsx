@@ -25,24 +25,6 @@ const FALLBACK_HEIGHT = 18;
 // OpenFreeMap positron — free, no API key, clean light style
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/positron";
 
-// Shadow canvas: pre-rendered at a fixed resolution and fed to MapLibre as
-// a raster image source. A single ctx.fill() call on the full path produces
-// the union of all shadow polygons — overlapping areas are filled only once
-// so opacity never accumulates even where building shadows stack.
-//
-// Resolution matches SHADOW_RENDER_ZOOM=16 (same as the old Leaflet approach)
-// so shadow edges are crisp at zoom 16 and still sharp at zoom 17.
-const _ZOOM16_PX  = (Math.pow(2, 16) * 256) / 360; // pixels per degree at zoom 16
-const SHADOW_W    = Math.ceil((DISTRICT_BOUNDS.east - DISTRICT_BOUNDS.west) * _ZOOM16_PX); // ~1966
-const SHADOW_H    = Math.ceil((DISTRICT_BOUNDS.north - DISTRICT_BOUNDS.south) * _ZOOM16_PX); // ~2560
-// MapLibre image-source corner order: top-left, top-right, bottom-right, bottom-left
-const SHADOW_COORDS: [[number,number],[number,number],[number,number],[number,number]] = [
-  [DISTRICT_BOUNDS.west, DISTRICT_BOUNDS.north],
-  [DISTRICT_BOUNDS.east, DISTRICT_BOUNDS.north],
-  [DISTRICT_BOUNDS.east, DISTRICT_BOUNDS.south],
-  [DISTRICT_BOUNDS.west, DISTRICT_BOUNDS.south],
-];
-
 // ─── types ────────────────────────────────────────────────────────────────────
 
 interface MapViewProps {
@@ -172,46 +154,68 @@ function computeViewportShadows(
   }
 }
 
-// ─── shadow canvas renderer ───────────────────────────────────────────────────
-// Draws all shadow polygons onto a single canvas with one ctx.fill() call.
-// Because the entire path is filled at once, overlapping building shadows
-// produce no opacity stacking — the result is a flat uniform dark layer.
+// ─── shadow GeoJSON builder ───────────────────────────────────────────────────
+// Computes the union of all building shadow polygons using polyclip-ts, then
+// returns a single GeoJSON Feature with a MultiPolygon geometry.  Rendering
+// this as a MapLibre fill layer produces crisp, GPU-rasterised vector edges at
+// every zoom level.  Because it is one Feature with one fill-opacity there is
+// no opacity accumulation where shadows overlap.
 
-function renderShadowCanvas(
-  canvas: HTMLCanvasElement,
+async function buildShadowGeoJSON(
   allBuildings: BuildingFeature[],
   timeState: TimeState,
-) {
-  const ctx    = canvas.getContext("2d")!;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<any> {
   const date   = new Date(`${timeState.date}T${timeState.time}:00`);
   const sunPos = getSunPosition(NEUBAU_CENTER[0], NEUBAU_CENTER[1], date);
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#334155";
-
+  // Night-time: cover the whole district
   if (sunPos.altitudeDeg <= 0) {
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    return;
+    return {
+      type: "Feature",
+      geometry: {
+        type: "Polygon",
+        coordinates: [[
+          [DISTRICT_BOUNDS.west,  DISTRICT_BOUNDS.south],
+          [DISTRICT_BOUNDS.east,  DISTRICT_BOUNDS.south],
+          [DISTRICT_BOUNDS.east,  DISTRICT_BOUNDS.north],
+          [DISTRICT_BOUNDS.west,  DISTRICT_BOUNDS.north],
+          [DISTRICT_BOUNDS.west,  DISTRICT_BOUNDS.south],
+        ]],
+      },
+      properties: {},
+    };
   }
 
-  ctx.beginPath();
+  // Collect shadow polygons as polyclip MultiPolygon input arrays.
+  // polyclip expects [[[lng, lat], ...]] (closed rings, GeoJSON coordinate order).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const polys: [number, number][][][] = [];
   for (const b of allBuildings) {
     const shadow = calcShadowPolygon(
       b.polygon, b.height ?? FALLBACK_HEIGHT,
       sunPos.altitudeDeg, sunPos.azimuthDeg,
     );
     if (shadow.length < 3) continue;
-    let first = true;
-    for (const [lat, lng] of shadow as [number, number][]) {
-      // Equirectangular projection — negligible error for a ~6 km area
-      const x = (lng - DISTRICT_BOUNDS.west)  / (DISTRICT_BOUNDS.east  - DISTRICT_BOUNDS.west)  * canvas.width;
-      const y = (DISTRICT_BOUNDS.north - lat)  / (DISTRICT_BOUNDS.north - DISTRICT_BOUNDS.south) * canvas.height;
-      if (first) { ctx.moveTo(x, y); first = false; }
-      else         ctx.lineTo(x, y);
-    }
-    ctx.closePath();
+    // Convert [lat, lng] → [lng, lat] and close the ring
+    const ring: [number, number][] = (shadow as [number, number][]).map(([lat, lng]) => [lng, lat]);
+    ring.push(ring[0]);
+    polys.push([ring]);
   }
-  ctx.fill(); // single fill → union of all polygons, no opacity stacking
+
+  if (polys.length === 0) {
+    return { type: "FeatureCollection", features: [] };
+  }
+
+  // Lazy-load polyclip-ts so it doesn't bloat the initial bundle
+  const { union } = await import("polyclip-ts");
+  const merged = union(polys[0], ...polys.slice(1));
+
+  return {
+    type: "Feature",
+    geometry: { type: "MultiPolygon", coordinates: merged },
+    properties: {},
+  };
 }
 
 // Flip [lat, lng] polygon to GeoJSON [lng, lat] and close the ring
@@ -236,7 +240,6 @@ export function MapView({
   const mapReadyRef    = useRef(false);  // true once map 'load' event fired
 
   const shadowPolygonsRef = useRef<[number, number][][]>([]);
-  const shadowCanvasRef   = useRef<HTMLCanvasElement | null>(null);
   const buildingCacheRef  = useRef<Map<number, BuildingFeature>>(new Map());
   const sunGenRef         = useRef(0);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -354,14 +357,14 @@ export function MapView({
     schedule(processChunk);
   }
 
-  // Render shadow canvas and push it to the MapLibre image source.
+  // Compute the union of all shadow polygons and push it to the GeoJSON source.
   function updateShadowSource(allBuildings: BuildingFeature[], ts: TimeState) {
-    const canvas = shadowCanvasRef.current;
-    const map    = mapInstanceRef.current;
-    if (!canvas || !map || !mapReadyRef.current) return;
-    renderShadowCanvas(canvas, allBuildings, ts);
-    const source = map.getSource("shadow-source") as any; // eslint-disable-line @typescript-eslint/no-explicit-any
-    source?.updateImage({ url: canvas.toDataURL("image/png"), coordinates: SHADOW_COORDS });
+    const map = mapInstanceRef.current;
+    if (!map || !mapReadyRef.current) return;
+    buildShadowGeoJSON(allBuildings, ts).then((geojson) => {
+      const source = map.getSource("shadow-source") as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+      source?.setData(geojson);
+    });
   }
 
   // Recompute viewport shadow polygons → update café dots. Cheap; called on moveend.
@@ -459,13 +462,6 @@ export function MapView({
         )?.id;
         const before = firstSymbolId; // undefined is fine — appends to end if no symbols
 
-        // ── shadow canvas ──────────────────────────────────────────────────
-
-        const shadowCanvas = document.createElement("canvas");
-        shadowCanvas.width  = SHADOW_W;
-        shadowCanvas.height = SHADOW_H;
-        shadowCanvasRef.current = shadowCanvas;
-
         // ── sources ────────────────────────────────────────────────────────
 
         map.addSource("green-areas-source", {
@@ -492,12 +488,12 @@ export function MapView({
           },
         });
 
-        // Shadow source: raster image from the offscreen canvas.
-        // Image sources avoid WebGL fill-opacity accumulation from overlapping polygons.
+        // Shadow source: GeoJSON with a single unioned MultiPolygon.
+        // Rendered as a fill layer → crisp WebGL vector edges at every zoom.
+        // No opacity accumulation: one feature, one fill-opacity.
         map.addSource("shadow-source", {
-          type: "image",
-          url: shadowCanvas.toDataURL("image/png"), // blank initially
-          coordinates: SHADOW_COORDS,
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
         });
 
         map.addSource("buildings-source", {
@@ -526,15 +522,12 @@ export function MapView({
           paint: { "fill-color": "#fde68a", "fill-opacity": 0.38 },
         }, before);
 
-        // Raster shadow layer — opacity here is the only transparency applied;
-        // the canvas itself is fully opaque dark pixels on transparent background.
-        // raster-resampling: nearest prevents bilinear blur when zoomed in past
-        // the canvas resolution, keeping shadow edges crisp at all zoom levels.
+        // Shadow fill layer — vector GeoJSON, infinitely sharp at any zoom.
         map.addLayer({
           id: "shadows",
-          type: "raster",
+          type: "fill",
           source: "shadow-source",
-          paint: { "raster-opacity": 0.55, "raster-resampling": "nearest" },
+          paint: { "fill-color": "#334155", "fill-opacity": 0.45 },
         }, before);
 
         map.addLayer({
