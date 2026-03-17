@@ -453,7 +453,7 @@ function SelectedCafeCard({
       {/* Card header */}
       <div className={`px-4 pt-4 pb-3.5 ${isSunny
         ? "bg-gradient-to-br from-amber-100 via-amber-50 to-white"
-        : "bg-gradient-to-br from-slate-100 via-slate-50/80 to-white"}`}
+        : "bg-gradient-to-br from-slate-200 via-slate-100 to-white"}`}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
@@ -492,14 +492,14 @@ function SelectedCafeCard({
 
       {/* Sun timeline */}
       {timeline && (
-        <div className="px-4 pb-3 pt-1">
+        <div className="px-4 pb-2 pt-1">
           <p className="text-[9px] font-body text-zinc-400 uppercase tracking-widest mb-1.5" style={{ fontWeight: 700 }}>Heute</p>
           <SunTimelineBar timeline={timeline} currentMinute={currentMinute} isSunny={isSunny} thick />
         </div>
       )}
 
       {/* Card footer */}
-      <div className="px-3 py-2.5 border-t border-zinc-50">
+      <div className="px-3 pb-2.5 pt-2">
         <a
           href={mapsUrl}
           target="_blank"
