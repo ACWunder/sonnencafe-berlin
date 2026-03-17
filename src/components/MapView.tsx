@@ -332,7 +332,7 @@ export function MapView({
               geometry: { type: "Point", coordinates: [cafe.lng, cafe.lat] },
               properties: {
                 id: cafe.id, name: cafe.name,
-                inShadow: remaining[cafe.id] === null,
+                inShadow: (remaining[cafe.id] ?? 0) <= 0,
                 isSelected: cafe.id === selId,
               },
             })),

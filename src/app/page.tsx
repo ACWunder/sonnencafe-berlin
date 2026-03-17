@@ -39,6 +39,25 @@ export default function Home() {
     el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [selectedCafe]);
 
+  // Auto-update time every minute when close to "now" (within 2 min)
+  useEffect(() => {
+    const id = setInterval(() => {
+      const now = new Date();
+      const nowStr = format(now, "HH:mm");
+      const nowDate = format(now, "yyyy-MM-dd");
+      setTimeState((s) => {
+        const [sh, sm] = s.time.split(":").map(Number);
+        const [nh, nm] = nowStr.split(":").map(Number);
+        const diff = Math.abs((nh * 60 + nm) - (sh * 60 + sm));
+        if (s.date === nowDate && diff <= 2) {
+          return { date: nowDate, time: nowStr };
+        }
+        return s;
+      });
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   useEffect(() => {
     fetch("/api/cafes")
       .then((r) => r.json())
@@ -234,7 +253,7 @@ export default function Home() {
               {filtered.map((cafe) => {
                 const isSelected = selectedCafe?.id === cafe.id;
                 const mins = sunRemaining[cafe.id];
-                const isSunny = mins !== null && mins !== undefined;
+                const isSunny = mins !== null && mins !== undefined && mins > 0;
                 const timeline = sunTimelines[cafe.id];
                 return (
                   <li key={cafe.id}>
@@ -317,7 +336,7 @@ export default function Home() {
             {filtered.map((cafe) => {
               const isSelected = selectedCafe?.id === cafe.id;
               const mins = sunRemaining[cafe.id];
-              const isSunny = mins !== null && mins !== undefined;
+              const isSunny = mins !== null && mins !== undefined && mins > 0;
               const timeline = sunTimelines[cafe.id];
               return (
                 <li key={cafe.id} data-cafe-id={cafe.id}>
@@ -418,7 +437,7 @@ function SelectedCafeCard({
   currentMinute: number;
   onClose: () => void;
 }) {
-  const isSunny = mins !== null && mins !== undefined;
+  const isSunny = mins !== null && mins !== undefined && mins > 0;
   const mapsQuery = cafe.address
     ? [cafe.name, cafe.address, "Wien"].join(", ")
     : cafe.name;
