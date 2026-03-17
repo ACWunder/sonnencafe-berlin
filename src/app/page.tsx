@@ -112,7 +112,7 @@ export default function Home() {
           className="flex items-center gap-1 bg-gradient-to-br from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white font-body font-semibold rounded-[8px] transition-all shadow-sm shadow-amber-200/60 active:scale-95 shrink-0 px-2 py-1"
         >
           <Sun className="w-3 h-3" />
-          <span className="text-[11px] hidden sm:inline">Jetzt</span>
+          <span className="text-[11px] hidden sm:inline">Now</span>
         </button>
 
         <button
