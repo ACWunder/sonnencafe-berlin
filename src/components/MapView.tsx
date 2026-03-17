@@ -64,13 +64,14 @@ function calcSunRemaining(
   const STEP_MS   = 10 * 60 * 1000;
   const MAX_STEPS = 24;
   const OFFSET_M  = 10;
-  const LAT_MAX   = 150 / 111_000;
-  const LNG_MAX   = 150 / (111_000 * Math.cos((cafe.lat * Math.PI) / 180));
+  const LAT_MAX   = 200 / 111_000;
+  const LNG_MAX   = 200 / (111_000 * Math.cos((cafe.lat * Math.PI) / 180));
 
-  const nearby = buildings.filter((b) => {
-    const [bLat, bLng] = b.polygon[0];
-    return Math.abs(bLat - cafe.lat) < LAT_MAX && Math.abs(bLng - cafe.lng) < LNG_MAX;
-  });
+  const nearby = buildings.filter((b) =>
+    b.polygon.some(([bLat, bLng]) =>
+      Math.abs(bLat - cafe.lat) < LAT_MAX && Math.abs(bLng - cafe.lng) < LNG_MAX
+    )
+  );
 
   for (let step = 0; step <= MAX_STEPS; step++) {
     const date   = new Date(currentDate.getTime() + step * STEP_MS);
@@ -99,13 +100,14 @@ function calcDayTimeline(
 ): SunTimeline {
   const INTERVAL_MIN = 20;
   const OFFSET_M     = 10;
-  const LAT_MAX      = 150 / 111_000;
-  const LNG_MAX      = 150 / (111_000 * Math.cos((cafe.lat * Math.PI) / 180));
+  const LAT_MAX      = 200 / 111_000;
+  const LNG_MAX      = 200 / (111_000 * Math.cos((cafe.lat * Math.PI) / 180));
 
-  const nearby = buildings.filter((b) => {
-    const [bLat, bLng] = b.polygon[0];
-    return Math.abs(bLat - cafe.lat) < LAT_MAX && Math.abs(bLng - cafe.lng) < LNG_MAX;
-  });
+  const nearby = buildings.filter((b) =>
+    b.polygon.some(([bLat, bLng]) =>
+      Math.abs(bLat - cafe.lat) < LAT_MAX && Math.abs(bLng - cafe.lng) < LNG_MAX
+    )
+  );
 
   const times       = getSunTimes(cafe.lat, cafe.lng, date);
   const startMinute = times.sunrise.getHours() * 60 + times.sunrise.getMinutes();
@@ -266,12 +268,13 @@ export function MapView({
       if (sunPos.altitudeDeg <= 0) {
         inShadow = true;
       } else {
-        const LAT_MAX = 150 / 111_000;
-        const LNG_MAX = 150 / (111_000 * Math.cos((cafe.lat * Math.PI) / 180));
-        const nearby = allBuildings.filter((b) => {
-          const [bLat, bLng] = b.polygon[0];
-          return Math.abs(bLat - cafe.lat) < LAT_MAX && Math.abs(bLng - cafe.lng) < LNG_MAX;
-        });
+        const LAT_MAX = 200 / 111_000;
+        const LNG_MAX = 200 / (111_000 * Math.cos((cafe.lat * Math.PI) / 180));
+        const nearby = allBuildings.filter((b) =>
+          b.polygon.some(([bLat, bLng]) =>
+            Math.abs(bLat - cafe.lat) < LAT_MAX && Math.abs(bLng - cafe.lng) < LNG_MAX
+          )
+        );
         inShadow = nearby.some((b) => {
           const poly = calcShadowPolygon(b.polygon, b.height ?? FALLBACK_HEIGHT, sunPos.altitudeDeg, sunPos.azimuthDeg);
           return poly.length >= 3 && pointInPolygon(chkLat, chkLng, poly);
