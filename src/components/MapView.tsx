@@ -460,19 +460,19 @@ export function MapView({
         const before = firstSymbolId; // undefined is fine — appends to end if no symbols
 
         // ── filter place labels ────────────────────────────────────────────
-        // OpenMapTiles classifies Viennese Grätzl (Strozziggrund, Altlerchenfeld…)
-        // as "neighbourhood" or "quarter". Official Bezirke are "suburb".
-        // Hide the sub-district classes so only Bezirke-level labels remain.
-        const hiddenPlaceClasses = ["neighbourhood", "quarter", "hamlet", "isolated_dwelling"];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        for (const layer of map.getStyle().layers as any[]) {
-          if (layer.type !== "symbol" || layer["source-layer"] !== "place") continue;
-          map.setFilter(layer.id, [
-            "all",
-            ...(layer.filter ? [layer.filter] : []),
-            ["!", ["in", ["get", "class"], ["literal", hiddenPlaceClasses]]],
-          ]);
-        }
+        // In OpenFreeMap positron, "label_other" is a catch-all that renders
+        // every place class not explicitly listed (city/country/state/town/village).
+        // That includes both "suburb" (= official Bezirke, keep) and
+        // "neighbourhood"/"quarter" (= Grätzl like Strozziggrund, hide).
+        // We replace the filter with the same match expression but add the
+        // unwanted classes to the exclusion list.
+        map.setFilter("label_other", [
+          "match", ["get", "class"],
+          ["city", "continent", "country", "hamlet", "isolated_dwelling",
+           "neighbourhood", "quarter", "state", "town", "village"],
+          false,
+          true,
+        ]);
 
         // ── shadow canvas ──────────────────────────────────────────────────
 
