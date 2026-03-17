@@ -419,7 +419,8 @@ function SelectedCafeCard({
   onClose: () => void;
 }) {
   const isSunny = mins !== null && mins !== undefined;
-  const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(cafe.name + ", Wien")}/@${cafe.lat},${cafe.lng},17z`;
+  const mapsQuery = [cafe.name, cafe.address, "Wien"].filter(Boolean).join(", ");
+  const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(mapsQuery)}/@${cafe.lat},${cafe.lng},19z`;
 
   // Find next sunny time from timeline
   let nextSunMinute: number | null = null;
