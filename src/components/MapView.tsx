@@ -147,31 +147,6 @@ function pointInPolygon(lat: number, lng: number, poly: [number, number][]): boo
   return inside;
 }
 
-// ─── viewport shadow polygons (for café sun/shade status checks) ──────────────
-
-function computeViewportShadows(
-  buildings: BuildingFeature[],
-  timeState: TimeState,
-  shadowStore: [number, number][][],
-) {
-  shadowStore.length = 0;
-  const date   = new Date(`${timeState.date}T${timeState.time}:00`);
-  const sunPos = getSunPosition(NEUBAU_CENTER[0], NEUBAU_CENTER[1], date);
-  if (sunPos.altitudeDeg <= 0) {
-    shadowStore.push([
-      [DISTRICT_BOUNDS.south, DISTRICT_BOUNDS.west],
-      [DISTRICT_BOUNDS.north, DISTRICT_BOUNDS.west],
-      [DISTRICT_BOUNDS.north, DISTRICT_BOUNDS.east],
-      [DISTRICT_BOUNDS.south, DISTRICT_BOUNDS.east],
-    ]);
-    return;
-  }
-  for (const b of buildings) {
-    const shadow = calcShadowPolygon(b.polygon, b.height ?? FALLBACK_HEIGHT, sunPos.altitudeDeg, sunPos.azimuthDeg);
-    if (shadow.length >= 3) shadowStore.push(shadow as [number, number][]);
-  }
-}
-
 // ─── shadow canvas renderer ───────────────────────────────────────────────────
 // Draws all shadow polygons onto a single canvas with one ctx.fill() call.
 // Because the entire path is filled at once, overlapping building shadows
@@ -235,7 +210,6 @@ export function MapView({
   const mapInstanceRef = useRef<any>(null);
   const mapReadyRef    = useRef(false);  // true once map 'load' event fired
 
-  const shadowPolygonsRef = useRef<[number, number][][]>([]);
   const shadowCanvasRef   = useRef<HTMLCanvasElement | null>(null);
   const buildingCacheRef  = useRef<Map<number, BuildingFeature>>(new Map());
   const sunGenRef         = useRef(0);
@@ -261,24 +235,6 @@ export function MapView({
 
   // ── helpers ────────────────────────────────────────────────────────────────
 
-  function getViewportBuildings(all: BuildingFeature[]): BuildingFeature[] {
-    const map = mapInstanceRef.current;
-    if (!map || all.length === 0) return all;
-    const b    = map.getBounds();
-    const latP = (b.getNorth() - b.getSouth()); // 100 % pad per side
-    const lngP = (b.getEast()  - b.getWest());
-    const s = b.getSouth() - latP, n = b.getNorth() + latP;
-    const w = b.getWest()  - lngP, e = b.getEast()  + lngP;
-    return all.filter((bld) => {
-      let bS = Infinity, bN = -Infinity, bW = Infinity, bE = -Infinity;
-      for (const [lat, lng] of bld.polygon) {
-        if (lat < bS) bS = lat; if (lat > bN) bN = lat;
-        if (lng < bW) bW = lng; if (lng > bE) bE = lng;
-      }
-      return bN >= s && bS <= n && bE >= w && bW <= e;
-    });
-  }
-
   // Push updated café GeoJSON to the map source.
   // recomputeSunData = true → also kick off the heavy sun-remaining/timeline
   // computation in idle-time chunks (generation-guarded against stale runs).
@@ -295,6 +251,8 @@ export function MapView({
     const azRad  = (sunPos.azimuthDeg * Math.PI) / 180;
     const selId  = selectedCafeRef.current?.id ?? null;
 
+    const allBuildings = Array.from(buildingCacheRef.current.values());
+
     const features = cafesRef.current.map((cafe) => {
       let chkLat = cafe.lat, chkLng = cafe.lng;
       if (sunPos.altitudeDeg > 0) {
@@ -303,9 +261,22 @@ export function MapView({
         chkLat = cafe.lat + dlat;
         chkLng = cafe.lng + dlng;
       }
-      const inShadow =
-        sunPos.altitudeDeg <= 0 ||
-        shadowPolygonsRef.current.some((poly) => pointInPolygon(chkLat, chkLng, poly));
+
+      let inShadow: boolean;
+      if (sunPos.altitudeDeg <= 0) {
+        inShadow = true;
+      } else {
+        const LAT_MAX = 150 / 111_000;
+        const LNG_MAX = 150 / (111_000 * Math.cos((cafe.lat * Math.PI) / 180));
+        const nearby = allBuildings.filter((b) => {
+          const [bLat, bLng] = b.polygon[0];
+          return Math.abs(bLat - cafe.lat) < LAT_MAX && Math.abs(bLng - cafe.lng) < LNG_MAX;
+        });
+        inShadow = nearby.some((b) => {
+          const poly = calcShadowPolygon(b.polygon, b.height ?? FALLBACK_HEIGHT, sunPos.altitudeDeg, sunPos.azimuthDeg);
+          return poly.length >= 3 && pointInPolygon(chkLat, chkLng, poly);
+        });
+      }
 
       return {
         type: "Feature",
@@ -364,10 +335,8 @@ export function MapView({
     source?.updateImage({ url: canvas.toDataURL("image/png"), coordinates: SHADOW_COORDS });
   }
 
-  // Recompute viewport shadow polygons → update café dots. Cheap; called on moveend.
+  // Update café dot colors after pan/zoom. Shadow check uses per-café nearby buildings.
   function refreshViewportShadows() {
-    const all = Array.from(buildingCacheRef.current.values());
-    computeViewportShadows(getViewportBuildings(all), timeStateRef.current, shadowPolygonsRef.current);
     updateCafesSource(false);
   }
 
@@ -396,11 +365,6 @@ export function MapView({
 
         // Build visual shadow layer and compute initial café statuses
         updateShadowSource(buildings, timeStateRef.current);
-        computeViewportShadows(
-          getViewportBuildings(buildings),
-          timeStateRef.current,
-          shadowPolygonsRef.current,
-        );
         updateCafesSource(true);
         setFetching(false);
       })
@@ -652,8 +616,6 @@ export function MapView({
     // Rebuild full visual shadow layer
     updateShadowSource(all, timeState);
 
-    // Recompute viewport shadow polygons + café dots + sun timelines
-    computeViewportShadows(getViewportBuildings(all), timeState, shadowPolygonsRef.current);
     updateCafesSource(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeState]);
