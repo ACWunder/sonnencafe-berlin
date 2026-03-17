@@ -9,7 +9,7 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        display: ["'Fraunces'", "Georgia", "serif"],
+        display: ["'Lora'", "Georgia", "serif"],
         body: ["'Figtree'", "sans-serif"],
         mono: ["'DM Mono'", "monospace"],
       },

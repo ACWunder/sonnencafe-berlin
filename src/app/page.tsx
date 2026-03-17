@@ -453,7 +453,7 @@ function SelectedCafeCard({
       {/* Card header */}
       <div className={`px-4 pt-4 pb-3.5 ${isSunny
         ? "bg-gradient-to-br from-amber-100 via-amber-50 to-white"
-        : "bg-gradient-to-br from-zinc-50 to-white"}`}
+        : "bg-gradient-to-br from-slate-100 via-slate-50/80 to-white"}`}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
@@ -506,21 +506,14 @@ function SelectedCafeCard({
           rel="noopener noreferrer"
           className="flex items-center gap-3 w-full bg-zinc-50 hover:bg-zinc-100 border border-zinc-100 rounded-xl px-3 py-2 transition-all active:scale-[0.98] group"
         >
-          {/* Google Maps app icon */}
-          <div className="w-8 h-8 rounded-[9px] overflow-hidden shrink-0 shadow-sm">
-            <svg width="32" height="32" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-              <rect width="100" height="100" fill="#fff"/>
-              {/* Green vertical road */}
-              <rect x="44" y="0" width="12" height="100" fill="#34A853"/>
-              {/* Blue horizontal road */}
-              <rect x="0" y="44" width="100" height="12" fill="#4285F4"/>
-              {/* Yellow diagonal */}
-              <line x1="100" y1="0" x2="0" y2="100" stroke="#FBBC04" strokeWidth="12"/>
-              {/* Intersection cover */}
-              <rect x="44" y="44" width="12" height="12" fill="#34A853"/>
-              {/* Pin */}
-              <path d="M50 22 C41 22 34 29 34 38 C34 51 50 68 50 68 C50 68 66 51 66 38 C66 29 59 22 50 22Z" fill="#EA4335"/>
-              <circle cx="50" cy="38" r="7" fill="white"/>
+          {/* Google Maps app icon — official 2020–2025 pin */}
+          <div className="w-8 h-8 rounded-[9px] overflow-hidden shrink-0 shadow-sm bg-white flex items-center justify-center" style={{ border: "1px solid rgba(0,0,0,0.08)" }}>
+            <svg width="20" height="28" viewBox="0 0 232597 333333" xmlns="http://www.w3.org/2000/svg" fillRule="evenodd" clipRule="evenodd">
+              <path d="M151444 5419C140355 1916 128560 0 116311 0 80573 0 48591 16155 27269 41534l54942 46222 69232-82338z" fill="#1a73e8"/>
+              <path d="M27244 41534C10257 61747 0 87832 0 116286c0 21876 4360 39594 11517 55472l70669-84002-54942-46222z" fill="#ea4335"/>
+              <path d="M116311 71828c24573 0 44483 19910 44483 44483 0 10938-3957 20969-10509 28706 0 0 35133-41786 69232-82313-14089-27093-38510-47936-68048-57286L82186 87756c8166-9753 20415-15928 34125-15928z" fill="#4285f4"/>
+              <path d="M116311 160769c-24573 0-44483-19910-44483-44483 0-10863 3906-20818 10358-28555l-70669 84027c12072 26791 32159 48289 52851 75381l85891-102122c-8141 9628-20339 15752-33948 15752z" fill="#fbbc04"/>
+              <path d="M148571 275014c38787-60663 84026-88210 84026-158728 0-19331-4738-37552-13080-53581L64393 247140c6578 8620 13206 17793 19683 27900 23590 36444 17037 58294 32260 58294 15172 0 8644-21876 32235-58320z" fill="#34a853"/>
             </svg>
           </div>
           <div className="flex-1 min-w-0">
