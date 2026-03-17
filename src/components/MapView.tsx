@@ -459,6 +459,21 @@ export function MapView({
         )?.id;
         const before = firstSymbolId; // undefined is fine — appends to end if no symbols
 
+        // ── filter place labels ────────────────────────────────────────────
+        // OpenMapTiles classifies Viennese Grätzl (Strozziggrund, Altlerchenfeld…)
+        // as "neighbourhood" or "quarter". Official Bezirke are "suburb".
+        // Hide the sub-district classes so only Bezirke-level labels remain.
+        const hiddenPlaceClasses = ["neighbourhood", "quarter", "hamlet", "isolated_dwelling"];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const layer of map.getStyle().layers as any[]) {
+          if (layer.type !== "symbol" || layer["source-layer"] !== "place") continue;
+          map.setFilter(layer.id, [
+            "all",
+            ...(layer.filter ? [layer.filter] : []),
+            ["!", ["in", ["get", "class"], ["literal", hiddenPlaceClasses]]],
+          ]);
+        }
+
         // ── shadow canvas ──────────────────────────────────────────────────
 
         const shadowCanvas = document.createElement("canvas");
