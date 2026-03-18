@@ -106,10 +106,13 @@ export default function Home() {
     });
   }, [cafes]);
 
+  // Deferred: sidebar + map update in a low-priority pass so checkbox clicks stay instant
+  const deferredDistricts = useDeferredValue(selectedDistricts);
+
   const districtFilteredCafes = useMemo(() => {
-    if (!selectedDistricts) return cafes;
-    return cafes.filter((c) => selectedDistricts.has(c.district ?? "Wien"));
-  }, [cafes, selectedDistricts]);
+    if (!deferredDistricts) return cafes;
+    return cafes.filter((c) => deferredDistricts.has(c.district ?? "Wien"));
+  }, [cafes, deferredDistricts]);
 
   const toggleDistrict = useCallback((d: string) => {
     setSelectedDistricts((prev) => {
@@ -122,8 +125,7 @@ export default function Home() {
 
   const filterActive = selectedDistricts !== null && selectedDistricts.size < allDistricts.length;
 
-  // Map update is deferred so checkbox interactions stay instant
-  const deferredCafesForMap = useDeferredValue(districtFilteredCafes);
+  const deferredCafesForMap = districtFilteredCafes; // already deferred via deferredDistricts
 
   const handleSunRemaining = useCallback((data: Record<string, number | null>) => {
     setSunRemaining(data);
