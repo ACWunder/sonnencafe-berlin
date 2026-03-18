@@ -684,13 +684,13 @@ function SelectedCafeCard({
         </div>
 
         {/* Sun pill */}
-        <div className={`inline-flex items-center gap-1.5 mt-2.5 px-2.5 py-1 rounded-full text-[11px] font-body font-medium ${
+        <div className={`inline-flex items-center gap-1.5 mt-2.5 px-2.5 py-1 rounded-full font-body font-medium whitespace-nowrap max-w-full overflow-hidden text-[10.5px] ${
           isSunny
             ? "bg-orange-100/80 text-orange-600"
             : "bg-zinc-100 text-zinc-500"
         }`}>
-          <div className={`w-1.5 h-1.5 rounded-full ${isSunny ? "bg-orange-400 sun-pulse" : "bg-zinc-400"}`} />
-          {sunLabel}
+          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isSunny ? "bg-orange-400 sun-pulse" : "bg-zinc-400"}`} />
+          <span className="truncate">{sunLabel}</span>
         </div>
       </div>
 
