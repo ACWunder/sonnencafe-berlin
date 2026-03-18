@@ -93,6 +93,22 @@ body {
   animation: cafeCardEnter 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+@keyframes cafeCardLeave {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+}
+
+.cafe-card-leave {
+  animation: cafeCardLeave 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
+  pointer-events: none;
+}
+
 /* Sun pulse dot */
 @keyframes sunDotPulse {
   0%, 100% { opacity: 1; }

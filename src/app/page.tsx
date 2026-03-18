@@ -437,6 +437,12 @@ function SelectedCafeCard({
   currentMinute: number;
   onClose: () => void;
 }) {
+  const [isClosing, setIsClosing] = useState(false);
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(onClose, 170);
+  };
+
   const isSunny = mins !== null && mins !== undefined;
   const mapsQuery = cafe.address
     ? [cafe.name, cafe.address, "Wien"].join(", ")
@@ -467,36 +473,36 @@ function SelectedCafeCard({
     : "Aktuell im Schatten";
 
   return (
-    <div className="m-3 rounded-2xl overflow-hidden border border-zinc-100 shadow-xl shadow-zinc-200/40 shrink-0 bg-white cafe-card-enter">
+    <div className={`m-3 rounded-2xl overflow-hidden border border-zinc-100 shadow-xl shadow-zinc-200/40 shrink-0 bg-white relative ${isClosing ? "cafe-card-leave" : "cafe-card-enter"}`}>
+
+      {/* iOS-style close button — absolute top-right corner */}
+      <button
+        onClick={handleClose}
+        className="absolute top-2.5 right-2.5 z-10 w-[44px] h-[44px] flex items-center justify-center active:scale-90 transition-transform duration-100"
+      >
+        <span className="w-[28px] h-[28px] rounded-full bg-zinc-900/[0.07] flex items-center justify-center">
+          <X className="w-[14px] h-[14px] text-zinc-500" strokeWidth={2.5} />
+        </span>
+      </button>
 
       {/* Card header */}
-      <div className={`px-4 pt-4 pb-3.5 ${
+      <div className={`px-4 pt-4 pb-3.5 pr-14 ${
         isSunny
           ? "bg-gradient-to-b from-amber-100 via-amber-50 to-white"
           : "bg-gradient-to-b from-zinc-200 via-zinc-100 to-white"
       }`}>
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <h2 className="font-display font-bold text-zinc-900 text-[15px] leading-tight">
-              {cafe.name}
-            </h2>
-            {(cafe.address || cafe.district) && (
-              <div className="flex items-center gap-1 mt-1">
-                <MapPin className="w-3 h-3 text-zinc-400 shrink-0" />
-                <p className="text-[11px] text-zinc-500 font-body leading-none">
-                  {cafe.address || cafe.district}
-                </p>
-              </div>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            className="w-12 h-12 -m-3 rounded-full flex items-center justify-center shrink-0 mt-0.5 group"
-          >
-            <span className="w-6 h-6 rounded-full bg-white/80 group-hover:bg-zinc-100 border border-zinc-100 flex items-center justify-center text-zinc-400 group-hover:text-zinc-600 transition-all">
-              <X className="w-3 h-3" />
-            </span>
-          </button>
+        <div className="min-w-0">
+          <h2 className="font-display font-bold text-zinc-900 text-[15px] leading-tight">
+            {cafe.name}
+          </h2>
+          {(cafe.address || cafe.district) && (
+            <div className="flex items-center gap-1 mt-1">
+              <MapPin className="w-3 h-3 text-zinc-400 shrink-0" />
+              <p className="text-[11px] text-zinc-500 font-body leading-none">
+                {cafe.address || cafe.district}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Sun pill */}
