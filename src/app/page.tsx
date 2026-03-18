@@ -525,17 +525,24 @@ export default function Home() {
 
           {/* Filter panel */}
           {showFilter && (
-            <>
-              {/* backdrop to close on outside click */}
-              <div className="absolute inset-0 z-[501]" onClick={() => setShowFilter(false)} />
-              <div className="absolute top-[6.25rem] left-3 z-[502] w-52 bg-white/95 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-xl shadow-zinc-200/50 overflow-hidden">
+            <div className="absolute top-[6.25rem] left-3 z-[502] w-52 bg-white/95 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-xl shadow-zinc-200/50 overflow-hidden">
                 <div className="flex items-center justify-between px-3.5 pt-3 pb-2">
                   <span className="text-[10px] font-body font-bold uppercase tracking-widest text-zinc-400">Bezirke</span>
                   <button
-                    onClick={() => { resetFilter(); setShowFilter(false); }}
+                    onClick={() => {
+                      const allChecked = !visualDistricts || visualDistricts.size === allDistricts.length;
+                      if (allChecked) {
+                        // Alle → Keine
+                        const empty = new Set<string>();
+                        setVisualDistricts(empty);
+                        startFilterTransition(() => setFilterDistricts(empty));
+                      } else {
+                        resetFilter();
+                      }
+                    }}
                     className="text-[11px] font-body font-semibold text-amber-500 active:opacity-70"
                   >
-                    Alle
+                    {!visualDistricts || visualDistricts.size === allDistricts.length ? "Keine" : "Alle"}
                   </button>
                 </div>
                 <div className="pb-2">
@@ -566,8 +573,7 @@ export default function Home() {
                     );
                   })}
                 </div>
-              </div>
-            </>
+            </div>
           )}
 
           {/* Mobile: floating cafe card — fixed, right-aligned, same bottom as legend */}
