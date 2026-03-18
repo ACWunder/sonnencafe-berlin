@@ -93,6 +93,11 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const cardDragStartY = useRef(0);
 
+  // Refs for tap-to-close filter panel
+  const mainRef = useRef<HTMLElement>(null);
+  const filterPanelRef = useRef<HTMLDivElement>(null);
+  const filterButtonRef = useRef<HTMLButtonElement>(null);
+
   // ── District filter ──────────────────────────────────────────────────────────
   const [showFilter, setShowFilter] = useState(false);
 
@@ -135,6 +140,63 @@ export default function Home() {
   }, []);
 
   const filterActive = visualDistricts !== null && visualDistricts.size < allDistricts.length;
+
+  // Tap-to-close filter panel: close on short tap on map, not on drag/zoom
+  useEffect(() => {
+    if (!showFilter) return;
+
+    const main = mainRef.current;
+    if (!main) return;
+
+    let startX = 0, startY = 0, startTime = 0, moved = false, fromUI = false;
+
+    const onTouchStart = (e: TouchEvent) => {
+      const t = e.touches[0];
+      startX = t.clientX; startY = t.clientY; startTime = Date.now(); moved = false;
+      // Check if touch started inside filter panel or button
+      const target = e.target as Node;
+      fromUI = !!(
+        (filterPanelRef.current && filterPanelRef.current.contains(target)) ||
+        (filterButtonRef.current && filterButtonRef.current.contains(target))
+      );
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (Math.abs(t.clientX - startX) > 6 || Math.abs(t.clientY - startY) > 6) {
+        moved = true;
+      }
+    };
+
+    const onTouchEnd = () => {
+      const elapsed = Date.now() - startTime;
+      if (!moved && !fromUI && elapsed < 400) {
+        setShowFilter(false);
+      }
+    };
+
+    // Desktop: close on click outside
+    const onMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      const insidePanel = filterPanelRef.current?.contains(target);
+      const insideButton = filterButtonRef.current?.contains(target);
+      if (!insidePanel && !insideButton) {
+        setShowFilter(false);
+      }
+    };
+
+    main.addEventListener("touchstart", onTouchStart, { passive: true });
+    main.addEventListener("touchmove", onTouchMove, { passive: true });
+    main.addEventListener("touchend", onTouchEnd, { passive: true });
+    document.addEventListener("mousedown", onMouseDown);
+
+    return () => {
+      main.removeEventListener("touchstart", onTouchStart);
+      main.removeEventListener("touchmove", onTouchMove);
+      main.removeEventListener("touchend", onTouchEnd);
+      document.removeEventListener("mousedown", onMouseDown);
+    };
+  }, [showFilter]);
 
   const deferredCafesForMap = useDeferredValue(districtFilteredCafes);
 
@@ -492,7 +554,7 @@ export default function Home() {
         </aside>
 
         {/* Map — always rendered once */}
-        <main className="flex-1 relative overflow-hidden">
+        <main ref={mainRef} className="flex-1 relative overflow-hidden">
           <MapView
             timeState={timeState}
             cafes={deferredCafesForMap}
@@ -512,6 +574,7 @@ export default function Home() {
 
           {/* Filter button */}
           <button
+            ref={filterButtonRef}
             onClick={() => setShowFilter((v) => !v)}
             className={`absolute top-14 left-3 z-[500] w-9 h-9 backdrop-blur-xl rounded-2xl border shadow-lg shadow-zinc-200/40 flex items-center justify-center active:scale-95 transition-all ${
               filterActive
@@ -525,24 +588,34 @@ export default function Home() {
 
           {/* Filter panel */}
           {showFilter && (
-            <div className="absolute top-[6.25rem] left-3 z-[502] w-52 bg-white/95 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-xl shadow-zinc-200/50 overflow-hidden">
-                <div className="flex items-center justify-between px-3.5 pt-3 pb-2">
-                  <span className="text-[10px] font-body font-bold uppercase tracking-widest text-zinc-400">Bezirke</span>
+            <div ref={filterPanelRef} className="absolute top-[6.25rem] left-3 z-[502] w-52 bg-white/95 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-xl shadow-zinc-200/50 overflow-hidden">
+                <div className="flex items-center justify-between pl-3.5 pr-1 pt-1 pb-2">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-body font-bold uppercase tracking-widest text-zinc-400">Bezirke</span>
+                    <button
+                      onClick={() => {
+                        const allChecked = !visualDistricts || visualDistricts.size === allDistricts.length;
+                        if (allChecked) {
+                          const empty = new Set<string>();
+                          setVisualDistricts(empty);
+                          startFilterTransition(() => setFilterDistricts(empty));
+                        } else {
+                          resetFilter();
+                        }
+                      }}
+                      className="text-[11px] font-body font-semibold text-amber-500 active:opacity-70"
+                    >
+                      {!visualDistricts || visualDistricts.size === allDistricts.length ? "Keine" : "Alle"}
+                    </button>
+                  </div>
+                  {/* iOS-style close button */}
                   <button
-                    onClick={() => {
-                      const allChecked = !visualDistricts || visualDistricts.size === allDistricts.length;
-                      if (allChecked) {
-                        // Alle → Keine
-                        const empty = new Set<string>();
-                        setVisualDistricts(empty);
-                        startFilterTransition(() => setFilterDistricts(empty));
-                      } else {
-                        resetFilter();
-                      }
-                    }}
-                    className="text-[11px] font-body font-semibold text-amber-500 active:opacity-70"
+                    onClick={() => setShowFilter(false)}
+                    className="w-[44px] h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-transform duration-100"
                   >
-                    {!visualDistricts || visualDistricts.size === allDistricts.length ? "Keine" : "Alle"}
+                    <span className="w-[28px] h-[28px] rounded-full bg-zinc-900/[0.07] flex items-center justify-center">
+                      <X className="w-[14px] h-[14px] text-zinc-500" strokeWidth={2.5} />
+                    </span>
                   </button>
                 </div>
                 <div className="pb-2">
