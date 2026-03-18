@@ -1,6 +1,6 @@
 // Run with: node scripts/fetch-green-areas.mjs
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
-const BBOX = "48.175,16.333,48.230,16.375";
+const BBOX = "52.4546381,13.3362902,52.5585856,13.4721073"; // Mitte, Kreuzberg, Prenzlauer Berg, Schöneberg
 
 const query = `
 [out:json][timeout:60];

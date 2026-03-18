@@ -11,8 +11,8 @@ import type { BuildingFeature } from "@/app/api/buildings/route";
 // ─── constants ────────────────────────────────────────────────────────────────
 
 const DISTRICT_BOUNDS = {
-  south: 48.175, west: 16.333,
-  north: 48.230, east: 16.375,
+  south: 52.4546381, west: 13.3362902,
+  north: 52.5585856, east: 13.4721073,
 } as const;
 
 const MAP_CENTER: [number, number] = [

@@ -3,24 +3,24 @@
 
 import type { Cafe } from "@/types";
 
-// Only cafes in the 7th district (Neubau)
+// Known cafés in Berlin
 export const FALLBACK_CAFES: Cafe[] = [
   {
-    id: "fallback-7",
-    name: "Café Westend",
-    lat: 48.1976,
-    lng: 16.3387,
-    address: "Mariahilfer Str. 128",
-    district: "7. Bezirk",
+    id: "fallback-1",
+    name: "Bonanza Coffee Roasters",
+    lat: 52.5338,
+    lng: 13.4228,
+    address: "Oderberger Str. 35",
+    district: "Prenzlauer Berg",
     amenity: "cafe",
   },
   {
-    id: "fallback-14",
-    name: "Glacis Beisl",
-    lat: 48.2045,
-    lng: 16.3528,
-    address: "Breite Gasse 4",
-    district: "7. Bezirk",
+    id: "fallback-2",
+    name: "Café am Neuen See",
+    lat: 52.5141,
+    lng: 13.3380,
+    address: "Lichtensteinallee 2",
+    district: "Mitte",
     amenity: "cafe",
   },
 ];

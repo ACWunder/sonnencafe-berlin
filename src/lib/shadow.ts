@@ -1,22 +1,21 @@
 // src/lib/shadow.ts
 //
-// MVP Shadow Heuristic for Vienna cafés
+// MVP Shadow Heuristic for Berlin cafés
 //
 // Strategy:
 //  1. If sun is below horizon → shady
 //  2. If sun altitude very low (<5°) → mostly shady (urban canyons block it)
 //  3. We estimate "urban canyon" blocking: if azimuth points roughly toward a
 //     narrow street/building wall, shade is more likely.
-//  4. We use a street-orientation proxy: in Vienna's grid, streets run roughly
+//  4. We use a street-orientation proxy: in Berlin's grid, streets run roughly
 //     N–S and E–W. Buildings shadow eastward in the morning, westward in the
 //     afternoon, northward very little.
-//  5. We add a "building density" factor. In districts 1–9 (dense city center),
-//     we assume buildings of ~16m (5 floors). In outer districts ~10m.
+//  5. We add a "building density" factor. In Mitte and inner districts (dense),
+//     we assume buildings of ~16m (5 floors). In outer areas ~10m.
 //  6. Final score is a composite: 0 = full sun, 1 = full shade.
 //
 // This is intentionally a heuristic, not physics. It produces sensible
-// and useful results. For real 3D accuracy, integrate Vienna's OGD 3D
-// building dataset (see README).
+// and useful results.
 
 import type { SunPosition, SunStatus } from "@/types";
 import { getSunPosition } from "./sun";
@@ -28,14 +27,13 @@ const STREET_WIDTH = 16; // meters – typical Vienna street incl. pavement
 
 /**
  * Estimate how "urban dense" a location is.
- * Simple approximation: districts 1–9 are very dense.
- * We use the bounding boxes from overpass.ts as a proxy.
+ * Simple approximation based on Berlin districts.
  */
 function getUrbanDensityFactor(lat: number, lng: number): number {
-  // 1st district (Innere Stadt) – very dense, tall buildings
-  if (lat > 48.205 && lat < 48.217 && lng > 16.364 && lng < 16.384) return 1.0;
-  // Inner districts 2–9 – dense Gründerzeit
-  if (lat > 48.185 && lat < 48.235 && lng > 16.32 && lng < 16.42) return 0.85;
+  // Mitte (historic core) – very dense, tall buildings
+  if (lat > 52.508 && lat < 52.535 && lng > 13.370 && lng < 13.435) return 1.0;
+  // Inner districts: Mitte, Kreuzberg, Prenzlauer Berg, Schöneberg – dense Gründerzeit
+  if (lat > 52.455 && lat < 52.560 && lng > 13.330 && lng < 13.475) return 0.85;
   // Slightly outer
   return 0.6;
 }
@@ -52,9 +50,9 @@ function criticalShadowAngle(buildingHeight: number, streetWidth: number): numbe
 
 /**
  * Estimate if the sun direction is "blocked" by a typical building in a dense
- * Vienna street grid.
+ * Berlin street grid.
  *
- * The Viennese street grid is roughly aligned N–S / E–W.
+ * Berlin's street grid is roughly aligned N–S / E–W.
  * - Morning (azimuth ~90°/E): east-facing facades cast shadows westward
  * - Afternoon (azimuth ~270°/W): west-facing facades cast shadows eastward
  * - Midday south (azimuth ~180°/S): buildings N of spot cast shadows southward

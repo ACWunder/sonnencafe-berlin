@@ -2,7 +2,7 @@
 // Fetches all buildings for the district bbox and saves to public/buildings-cache.json
 
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
-const BBOX = "48.175,16.333,48.230,16.375"; // districts 5, 6, 7, 8, 9 up to Gürtelbrücke
+const BBOX = "52.4546381,13.3362902,52.5585856,13.4721073"; // Mitte, Kreuzberg, Prenzlauer Berg, Schöneberg
 
 const query = `
 [out:json][timeout:60];
