@@ -694,11 +694,6 @@ function SunTimelineBar({
       </div>
       <div className="flex items-center justify-between mt-0.5">
         <span className="text-zinc-300 font-body" style={{ fontSize: "9px" }}>{fmtMin(startMinute)}</span>
-        {nextSunMinute !== null && (
-          <span className="text-orange-400 font-body font-medium" style={{ fontSize: "9px" }}>
-            ☀ {fmtMin(nextSunMinute)}
-          </span>
-        )}
         <span className="text-zinc-300 font-body" style={{ fontSize: "9px" }}>{fmtMin(endMinute)}</span>
       </div>
     </div>
