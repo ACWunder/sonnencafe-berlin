@@ -318,6 +318,7 @@ export default function Home() {
           </div>
           <h1 className="font-display font-bold text-zinc-900 text-[13px] leading-none tracking-tight whitespace-nowrap">
             Sonnencafe Berlin
+            <span className="font-body font-normal text-zinc-400 text-[10px] ml-1">für Lotte</span>
           </h1>
         </div>
 
