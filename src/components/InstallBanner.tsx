@@ -14,24 +14,15 @@ export function InstallBanner() {
       (navigator as unknown as { standalone?: boolean }).standalone === true;
     if (isStandalone) return;
 
-    // Only show on mobile
     const ua = navigator.userAgent;
     const isIOS = /iPad|iPhone|iPod/.test(ua);
     const isAndroid = /Android/.test(ua);
-    if (!isIOS && !isAndroid) return;
 
-    // Don't show if dismissed within last 7 days
-    const dismissed = localStorage.getItem("installBannerDismissed");
-    if (dismissed && Date.now() - Number(dismissed) < 7 * 24 * 60 * 60 * 1000) return;
-
-    setPlatform(isIOS ? "ios" : "android");
-    // Small delay so it doesn't pop up instantly on first load
-    const t = setTimeout(() => setShow(true), 1500);
-    return () => clearTimeout(t);
+    setPlatform(isIOS ? "ios" : isAndroid ? "android" : "ios");
+    setShow(true);
   }, []);
 
   function dismiss() {
-    localStorage.setItem("installBannerDismissed", String(Date.now()));
     setShow(false);
   }
 
