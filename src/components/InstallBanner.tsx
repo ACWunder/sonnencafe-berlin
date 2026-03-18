@@ -51,9 +51,11 @@ export function InstallBanner() {
           </div>
           <button
             onClick={dismiss}
-            className="w-6 h-6 rounded-full bg-zinc-100 flex items-center justify-center text-zinc-400 hover:text-zinc-600 transition-colors shrink-0 mt-0.5"
+            className="w-[44px] h-[44px] -mr-2 -mt-1 rounded-full flex items-center justify-center shrink-0 active:scale-90 transition-transform duration-100"
           >
-            <X className="w-3 h-3" />
+            <span className="w-[28px] h-[28px] rounded-full bg-zinc-900/[0.07] flex items-center justify-center">
+              <X className="w-[14px] h-[14px] text-zinc-500" strokeWidth={2.5} />
+            </span>
           </button>
         </div>
 
