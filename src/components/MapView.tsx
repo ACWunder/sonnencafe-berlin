@@ -28,29 +28,31 @@ const _ZOOM16_PX = (Math.pow(2, 16) * 256) / 360; // px per degree at zoom 16
 // Per-district config: shadow canvas bounds (with border buffer for accuracy),
 // map fly-to center [lng, lat], and buildings file path.
 type DistrictBounds = { south: number; west: number; north: number; east: number };
+// Bounds are computed from the exact OSM district polygon bboxes + 0.005° buffer
+// for shadow rendering accuracy at district edges. Centers are bbox midpoints.
 const DISTRICT_CONFIG: Record<string, {
   bounds: DistrictBounds;
   center: [number, number]; // [lng, lat] for MapLibre
   file: string;
 }> = {
   "Mitte": {
-    bounds: { south: 52.498, west: 13.355, north: 52.547, east: 13.435 },
-    center: [13.397, 52.520],
+    bounds: { south: 52.499, west: 13.361, north: 52.545, east: 13.434 },
+    center: [13.398, 52.522],
     file: "/buildings-mitte.json",
   },
   "Kreuzberg": {
-    bounds: { south: 52.476, west: 13.362, north: 52.515, east: 13.462 },
-    center: [13.410, 52.497],
+    bounds: { south: 52.478, west: 13.363, north: 52.514, east: 13.458 },
+    center: [13.411, 52.496],
     file: "/buildings-kreuzberg.json",
   },
   "Prenzlauer Berg": {
-    bounds: { south: 52.514, west: 13.390, north: 52.566, east: 13.477 },
-    center: [13.435, 52.540],
+    bounds: { south: 52.515, west: 13.392, north: 52.564, east: 13.477 },
+    center: [13.434, 52.539],
     file: "/buildings-prenzlauer-berg.json",
   },
   "Schöneberg": {
-    bounds: { south: 52.448, west: 13.325, north: 52.510, east: 13.420 },
-    center: [13.373, 52.480],
+    bounds: { south: 52.450, west: 13.331, north: 52.510, east: 13.382 },
+    center: [13.356, 52.480],
     file: "/buildings-schoeneberg.json",
   },
 };

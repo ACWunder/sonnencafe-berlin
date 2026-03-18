@@ -47,12 +47,19 @@ const BORDER_BUFFER = 0.005; // ~550 m — covers the 300 m max shadow length
 const districtBboxes = DISTRICT_POLYGONS.map(({ name, file, ring }) => {
   const lats = ring.map(([lat]) => lat);
   const lngs = ring.map(([, lng]) => lng);
+  const trueSouth = Math.min(...lats);
+  const trueNorth = Math.max(...lats);
+  const trueWest  = Math.min(...lngs);
+  const trueEast  = Math.max(...lngs);
+  console.log(`${name} true bbox: south=${trueSouth.toFixed(6)}, west=${trueWest.toFixed(6)}, north=${trueNorth.toFixed(6)}, east=${trueEast.toFixed(6)}`);
   return {
     name, file, ring,
-    south: Math.min(...lats) - BORDER_BUFFER,
-    north: Math.max(...lats) + BORDER_BUFFER,
-    west:  Math.min(...lngs) - BORDER_BUFFER,
-    east:  Math.max(...lngs) + BORDER_BUFFER,
+    trueSouth, trueNorth, trueWest, trueEast,
+    // Pre-check bbox expanded by buffer
+    south: trueSouth - BORDER_BUFFER,
+    north: trueNorth + BORDER_BUFFER,
+    west:  trueWest  - BORDER_BUFFER,
+    east:  trueEast  + BORDER_BUFFER,
   };
 });
 
@@ -65,17 +72,26 @@ console.log(`Total buildings: ${buildings.length}`);
 const buckets = Object.fromEntries(DISTRICT_POLYGONS.map(d => [d.name, []]));
 
 for (const building of buildings) {
-  const [lat, lng] = building.polygon[0]; // centroid approximation
+  // Use centroid (average of all vertices) — much more reliable than polygon[0]
+  // which is just one arbitrary corner and may lie outside the district polygon.
+  const pts = building.polygon;
+  let cLat = 0, cLng = 0;
+  for (const [lat, lng] of pts) { cLat += lat; cLng += lng; }
+  cLat /= pts.length;
+  cLng /= pts.length;
 
   for (const d of districtBboxes) {
-    // Fast bbox pre-check
-    if (lat < d.south || lat > d.north || lng < d.west || lng > d.east) continue;
-    // Exact polygon test (inside district) OR within buffer bbox of district
-    const inside = pointInPolygon(lat, lng, d.ring);
-    const nearBorder =
-      lat < d.south + BORDER_BUFFER || lat > d.north - BORDER_BUFFER ||
-      lng < d.west  + BORDER_BUFFER || lng > d.east  - BORDER_BUFFER;
-    if (inside || nearBorder) {
+    // Fast expanded-bbox pre-check
+    if (cLat < d.south || cLat > d.north || cLng < d.west || cLng > d.east) continue;
+
+    // Include if centroid is inside the district polygon, OR if centroid is in
+    // the BORDER_BUFFER zone around the true polygon bbox (shadow accuracy near borders).
+    const inside = pointInPolygon(cLat, cLng, d.ring);
+    const inBorderZone =
+      cLat <= d.trueSouth + BORDER_BUFFER || cLat >= d.trueNorth - BORDER_BUFFER ||
+      cLng <= d.trueWest  + BORDER_BUFFER || cLng >= d.trueEast  - BORDER_BUFFER;
+
+    if (inside || inBorderZone) {
       buckets[d.name].push(building);
     }
   }
