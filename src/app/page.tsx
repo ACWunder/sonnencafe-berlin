@@ -8,6 +8,72 @@ import type { Cafe, TimeState, SunTimeline, SunTimelineData } from "@/types";
 import { MapView } from "@/components/MapView";
 import { InstallBanner } from "@/components/InstallBanner";
 
+// ─── Opening hours parser (OSM format) ───────────────────────────────────────
+
+const OH_DAYS = ["Su","Mo","Tu","We","Th","Fr","Sa"]; // index === JS getDay()
+
+function ohExpandDays(spec: string): number[] {
+  const days: number[] = [];
+  for (const part of spec.split(",")) {
+    const p = part.trim();
+    if (p.includes("-")) {
+      const [a, b] = p.split("-").map((d) => OH_DAYS.indexOf(d.trim()));
+      // Wrap-around week: e.g. Sa-Mo → 6,0,1
+      if (a !== -1 && b !== -1) {
+        let i = a;
+        while (true) {
+          days.push(i % 7);
+          if (i % 7 === b) break;
+          i++;
+          if (i - a > 7) break; // safety
+        }
+      }
+    } else {
+      const d = OH_DAYS.indexOf(p);
+      if (d !== -1) days.push(d);
+    }
+  }
+  return days;
+}
+
+/** Returns true=open, false=closed, null=unknown */
+function isOpenNow(oh: string | undefined, date: Date): boolean | null {
+  if (!oh) return null;
+  const s = oh.trim();
+  if (s === "24/7") return true;
+
+  const dow = date.getDay();
+  const nowMin = date.getHours() * 60 + date.getMinutes();
+  let result: boolean | null = null;
+
+  for (const rule of s.split(";")) {
+    const r = rule.trim();
+    if (!r) continue;
+    // "<dayspec> <timespec|off>"
+    const m = r.match(/^([A-Za-z,\-]+)\s+(.+)$/);
+    if (!m) continue;
+    const days = ohExpandDays(m[1]);
+    if (!days.includes(dow)) continue;
+    const timeSpec = m[2].trim().toLowerCase();
+    if (timeSpec === "off") { result = false; continue; }
+    // Check each comma-separated time range
+    let open = false;
+    for (const range of timeSpec.split(",")) {
+      const parts = range.trim().split("-");
+      if (parts.length < 2) continue;
+      const [sh, sm] = parts[0].split(":").map(Number);
+      const [eh, em] = parts[1].split(":").map(Number);
+      const start = sh * 60 + (sm || 0);
+      const end = eh * 60 + (em || 0);
+      if (end > start ? (nowMin >= start && nowMin < end) : (nowMin >= start || nowMin < end)) {
+        open = true; break;
+      }
+    }
+    result = open;
+  }
+  return result;
+}
+
 // ─── Fuzzy search ─────────────────────────────────────────────────────────────
 
 /** Phonetic normalisation: strips diacritics, maps common sound-alikes */
@@ -199,6 +265,12 @@ export default function Home() {
   }, [showFilter]);
 
   const deferredCafesForMap = useDeferredValue(districtFilteredCafes);
+
+  const currentDate = useMemo(() => {
+    const [y, mo, d] = timeState.date.split("-").map(Number);
+    const [h, m] = timeState.time.split(":").map(Number);
+    return new Date(y, mo - 1, d, h, m);
+  }, [timeState]);
 
   const handleSunRemaining = useCallback((data: Record<string, number | null>) => {
     setSunRemaining(data);
@@ -489,6 +561,7 @@ export default function Home() {
               mins={sunRemaining[selectedCafe.id]}
               timeline={sunTimelines[selectedCafe.id]}
               currentMinute={currentMinute}
+              currentDate={currentDate}
               onClose={() => setSelectedCafe(null)}
             />
           )}
@@ -656,6 +729,7 @@ export default function Home() {
                 mins={sunRemaining[selectedCafe.id]}
                 timeline={sunTimelines[selectedCafe.id]}
                 currentMinute={currentMinute}
+                currentDate={currentDate}
                 onClose={() => setSelectedCafe(null)}
               />
             </div>
@@ -673,12 +747,14 @@ function SelectedCafeCard({
   mins,
   timeline,
   currentMinute,
+  currentDate,
   onClose,
 }: {
   cafe: Cafe;
   mins: number | null | undefined;
   timeline?: SunTimeline;
   currentMinute: number;
+  currentDate: Date;
   onClose: () => void;
 }) {
   const [isClosing, setIsClosing] = useState(false);
@@ -692,6 +768,7 @@ function SelectedCafeCard({
   };
 
   const isSunny = mins !== null && mins !== undefined;
+  const openStatus = isOpenNow(cafe.tags?.opening_hours, currentDate);
   const mapsQuery = cafe.address
     ? [cafe.name, cafe.address, "Wien"].join(", ")
     : cafe.name;
@@ -740,9 +817,16 @@ function SelectedCafeCard({
           : "bg-gradient-to-b from-zinc-200 via-zinc-100 to-white"
       }`}>
         <div className="min-w-0">
-          <h2 className="font-display font-bold text-zinc-900 text-[15px] leading-tight">
-            {cafe.name}
-          </h2>
+          <div className="flex items-baseline gap-2">
+            <h2 className="font-display font-bold text-zinc-900 text-[15px] leading-tight">
+              {cafe.name}
+            </h2>
+            {openStatus !== null && (
+              <span className={`text-[9px] font-body font-semibold shrink-0 ${openStatus ? "text-green-500" : "text-red-400"}`}>
+                {openStatus ? "geöffnet" : "geschlossen"}
+              </span>
+            )}
+          </div>
           {(cafe.address || cafe.district) && (
             <div className="flex items-center gap-1 mt-1">
               <MapPin className="w-3 h-3 text-zinc-400 shrink-0" />
