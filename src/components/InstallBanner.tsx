@@ -44,10 +44,10 @@ export function InstallBanner() {
               <p className="font-display font-bold text-zinc-900 text-[14px] leading-tight">
                 Sonnencafe Wien
               </p>
-              <p className="text-[11px] text-zinc-700 font-body mt-0.5">
+              <p className="text-[11px] text-zinc-600 font-body mt-0.5">
                 Finde Cafés in Wien, die jetzt oder später in der Sonne liegen.
               </p>
-              <p className="text-[11px] text-zinc-400 font-body mt-0.5">
+              <p className="text-[11px] text-zinc-600 font-body mt-0.5">
                 Zum Home-Bildschirm hinzufügen für die beste Experience.
               </p>
             </div>
