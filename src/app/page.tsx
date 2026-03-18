@@ -8,6 +8,74 @@ import type { Cafe, TimeState, SunTimeline, SunTimelineData } from "@/types";
 import { MapView } from "@/components/MapView";
 import { InstallBanner } from "@/components/InstallBanner";
 
+// ─── Fuzzy search ─────────────────────────────────────────────────────────────
+
+/** Phonetic normalisation: strips diacritics, maps common sound-alikes */
+function normalizeStr(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[äÄ]/g, "a").replace(/[öÖ]/g, "o").replace(/[üÜ]/g, "u")
+    .replace(/ß/g, "ss")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // strip remaining accents
+    .replace(/ph/g, "f").replace(/ck/g, "k")
+    .replace(/c(?=[aouklmnrtp])/g, "k") // c→k except ch/ci/ce
+    .replace(/\s+/g, " ").trim();
+}
+
+/** Levenshtein distance (iterative, space-efficient) */
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const curr = [i];
+    for (let j = 1; j <= b.length; j++) {
+      curr[j] = a[i - 1] === b[j - 1]
+        ? prev[j - 1]
+        : 1 + Math.min(prev[j], curr[j - 1], prev[j - 1]);
+    }
+    prev = curr;
+  }
+  return prev[b.length];
+}
+
+/**
+ * Returns a match score > 0 if the query matches the cafe, 0 if no match.
+ * Higher = better match.
+ *   100 – normalized substring hit in name
+ *    80 – normalized substring hit in address / district
+ *    60 – every query word found in name
+ *    40 – fuzzy word match (levenshtein ≤ 2, min word length 4)
+ */
+function fuzzyScore(query: string, cafe: Cafe): number {
+  const nq = normalizeStr(query);
+  const nn = normalizeStr(cafe.name);
+  const na = normalizeStr(cafe.address ?? "");
+  const nd = normalizeStr(cafe.district ?? "");
+
+  if (nn.includes(nq)) return 100;
+  if (na.includes(nq) || nd.includes(nq)) return 80;
+
+  const qWords = nq.split(" ").filter((w) => w.length > 1);
+  if (qWords.length > 1 && qWords.every((w) => nn.includes(w))) return 60;
+
+  // Fuzzy word-pair matching
+  const nWords = nn.split(" ");
+  let bestDist = Infinity;
+  for (const qw of qWords) {
+    if (qw.length < 4) continue;
+    for (const nw of nWords) {
+      if (nw.length < 4) continue;
+      const d = levenshtein(qw, nw);
+      if (d <= 2) bestDist = Math.min(bestDist, d);
+    }
+  }
+  if (bestDist <= 2) return 40 - bestDist * 10;
+
+  return 0;
+}
+
 export default function Home() {
   const [timeState, setTimeState] = useState<TimeState>(() => {
     const now = new Date();
@@ -66,21 +134,24 @@ export default function Home() {
   }, []);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const list = q
-      ? cafes.filter(
-          (c) =>
-            c.name.toLowerCase().includes(q) ||
-            c.address?.toLowerCase().includes(q) ||
-            c.district?.toLowerCase().includes(q)
-        )
-      : cafes;
+    const q = search.trim();
+    if (!q) {
+      return [...cafes].sort((a, b) => (sunRemaining[b.id] ?? -1) - (sunRemaining[a.id] ?? -1));
+    }
 
-    return [...list].sort((a, b) => {
-      const ma = sunRemaining[a.id] ?? -1;
-      const mb = sunRemaining[b.id] ?? -1;
-      return mb - ma;
-    });
+    // Score every cafe; keep those with any match
+    const scored = cafes
+      .map((c) => ({ cafe: c, score: fuzzyScore(q, c) }))
+      .filter(({ score }) => score > 0);
+
+    // Sort: match quality first, then sun remaining as tiebreaker
+    scored.sort((a, b) =>
+      b.score !== a.score
+        ? b.score - a.score
+        : (sunRemaining[b.cafe.id] ?? -1) - (sunRemaining[a.cafe.id] ?? -1)
+    );
+
+    return scored.map(({ cafe }) => cafe);
   }, [cafes, search, sunRemaining]);
 
   const currentMinute = (() => {
