@@ -1,7 +1,7 @@
 // src/app/page.tsx
 "use client";
 
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, useDeferredValue } from "react";
 import { format } from "date-fns";
 import { Sun, Search, MapPin, X, ExternalLink, Info, Menu, SlidersHorizontal } from "lucide-react";
 import type { Cafe, TimeState, SunTimeline, SunTimelineData } from "@/types";
@@ -121,6 +121,9 @@ export default function Home() {
   }, [allDistricts]);
 
   const filterActive = selectedDistricts !== null && selectedDistricts.size < allDistricts.length;
+
+  // Map update is deferred so checkbox interactions stay instant
+  const deferredCafesForMap = useDeferredValue(districtFilteredCafes);
 
   const handleSunRemaining = useCallback((data: Record<string, number | null>) => {
     setSunRemaining(data);
@@ -479,7 +482,7 @@ export default function Home() {
         <main className="flex-1 relative overflow-hidden">
           <MapView
             timeState={timeState}
-            cafes={districtFilteredCafes}
+            cafes={deferredCafesForMap}
             selectedCafe={selectedCafe}
             onCafeSelect={setSelectedCafe}
             onSunRemaining={handleSunRemaining}
