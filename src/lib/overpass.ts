@@ -17,20 +17,27 @@ export const BERLIN_FULL_BBOX = BERLIN_BBOX;
 export function buildOverpassQuery(): string {
   const bbox = `${BERLIN_FULL_BBOX.south},${BERLIN_FULL_BBOX.west},${BERLIN_FULL_BBOX.north},${BERLIN_FULL_BBOX.east}`;
 
-  // Cast the net wide:
-  // 1. amenity=cafe (standard)
-  // 2. amenity=restaurant with a coffee/kaffeehaus cuisine tag
-  // 3. shop=coffee (roasters / coffee bars)
-  // Both node and way so area-mapped places are included.
   return `
-[out:json][timeout:30];
+[out:json][timeout:60];
 (
   node["amenity"="cafe"](${bbox});
   way["amenity"="cafe"](${bbox});
-  node["amenity"="restaurant"]["cuisine"~"coffee_shop|kaffeehaus|cafe",i](${bbox});
-  way["amenity"="restaurant"]["cuisine"~"coffee_shop|kaffeehaus|cafe",i](${bbox});
+  node["amenity"="coffee_shop"](${bbox});
+  way["amenity"="coffee_shop"](${bbox});
+  node["amenity"="bistro"](${bbox});
+  way["amenity"="bistro"](${bbox});
+  node["amenity"="bar"]["cuisine"~"coffee",i](${bbox});
+  way["amenity"="bar"]["cuisine"~"coffee",i](${bbox});
+  node["amenity"="restaurant"]["cuisine"~"coffee_shop|kaffeehaus|cafe|brunch",i](${bbox});
+  way["amenity"="restaurant"]["cuisine"~"coffee_shop|kaffeehaus|cafe|brunch",i](${bbox});
   node["shop"="coffee"](${bbox});
   way["shop"="coffee"](${bbox});
+  node["shop"="tea"](${bbox});
+  way["shop"="tea"](${bbox});
+  node["cuisine"~"coffee_shop|espresso|cappuccino|kaffeehaus",i](${bbox});
+  way["cuisine"~"coffee_shop|espresso|cappuccino|kaffeehaus",i](${bbox});
+  node["amenity"="cafe"]["outdoor_seating"](${bbox});
+  way["amenity"="cafe"]["outdoor_seating"](${bbox});
 );
 out body;
 >;
@@ -59,12 +66,11 @@ export async function fetchCafesFromOverpass(): Promise<Cafe[]> {
 // Tags that identify a café-type element (as opposed to plain geometry nodes
 // or entrance nodes that arrive in the response via `>; out body qt`)
 function isCafeElement(tags: Record<string, string>): boolean {
-  return (
-    tags.amenity === "cafe" ||
-    tags.shop === "coffee" ||
-    (tags.amenity === "restaurant" &&
-      /coffee_shop|kaffeehaus|cafe/i.test(tags.cuisine ?? ""))
-  );
+  if (tags.amenity === "cafe" || tags.amenity === "coffee_shop" || tags.amenity === "bistro") return true;
+  if (tags.shop === "coffee" || tags.shop === "tea") return true;
+  if (/coffee_shop|kaffeehaus|cafe|brunch|espresso|cappuccino/i.test(tags.cuisine ?? "")) return true;
+  if (tags.amenity === "bar" && /coffee/i.test(tags.cuisine ?? "")) return true;
+  return false;
 }
 
 // For a Way polygon, find the midpoint of the edge that is farthest from the
@@ -211,10 +217,23 @@ function pointInDistrict(lat: number, lng: number, ring: [number, number][]): bo
   return inside;
 }
 
+// Precomputed district centroids for nearest-district fallback
+const DISTRICT_CENTROIDS = DISTRICT_POLYGONS.map(({ name, ring }) => ({
+  name,
+  lat: ring.reduce((s, [y]) => s + y, 0) / ring.length,
+  lng: ring.reduce((s, [, x]) => s + x, 0) / ring.length,
+}));
+
 /** Returns the Berlin district name ("Mitte", "Kreuzberg", "Prenzlauer Berg", "Schöneberg") or "Berlin". */
 function guessDistrict(lat: number, lng: number): string {
   for (const { name, ring } of DISTRICT_POLYGONS) {
     if (pointInDistrict(lat, lng, ring)) return name;
   }
-  return "Berlin";
+  // Fallback: assign to nearest district centroid (handles gaps at polygon boundaries)
+  let bestDist = Infinity, bestName = "Berlin";
+  for (const { name, lat: cLat, lng: cLng } of DISTRICT_CENTROIDS) {
+    const d = Math.hypot(lat - cLat, lng - cLng);
+    if (d < bestDist) { bestDist = d; bestName = name; }
+  }
+  return bestDist < 0.05 ? bestName : "Berlin";
 }
