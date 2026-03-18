@@ -305,7 +305,6 @@ export default function Home() {
         <aside className="hidden md:flex w-80 shrink-0 flex-col bg-white overflow-hidden" style={{ boxShadow: '1px 0 0 0 #f4f4f5, 4px 0 16px 0 rgba(0,0,0,0.03)' }}>
           {selectedCafe && (
             <SelectedCafeCard
-              key={selectedCafe.id}
               cafe={selectedCafe}
               mins={sunRemaining[selectedCafe.id]}
               timeline={sunTimelines[selectedCafe.id]}
@@ -407,7 +406,6 @@ export default function Home() {
               }}
             >
               <SelectedCafeCard
-                key={selectedCafe.id}
                 cafe={selectedCafe}
                 mins={sunRemaining[selectedCafe.id]}
                 timeline={sunTimelines[selectedCafe.id]}
@@ -438,6 +436,10 @@ function SelectedCafeCard({
   onClose: () => void;
 }) {
   const [isClosing, setIsClosing] = useState(false);
+
+  // Cancel close animation when switching to a different cafe
+  useEffect(() => { setIsClosing(false); }, [cafe.id]);
+
   const handleClose = () => {
     setIsClosing(true);
     setTimeout(onClose, 170);
@@ -473,15 +475,15 @@ function SelectedCafeCard({
     : "Aktuell im Schatten";
 
   return (
-    <div className={`m-3 rounded-2xl overflow-hidden border border-zinc-100 shadow-xl shadow-zinc-200/40 shrink-0 bg-white relative ${isClosing ? "cafe-card-leave" : "cafe-card-enter"}`}>
+    <div className={`m-3 rounded-2xl overflow-hidden border border-zinc-100 shadow-xl shadow-zinc-200/40 shrink-0 bg-white relative cafe-card-enter${isClosing ? " cafe-card-leave" : ""}`}>
 
       {/* iOS-style close button — absolute top-right corner */}
       <button
         onClick={handleClose}
-        className="absolute top-2.5 right-2.5 z-10 w-[44px] h-[44px] flex items-center justify-center active:scale-90 transition-transform duration-100"
+        className="absolute top-1 right-1 z-10 w-[52px] h-[52px] flex items-center justify-center active:scale-90 transition-transform duration-100"
       >
-        <span className="w-[28px] h-[28px] rounded-full bg-zinc-900/[0.07] flex items-center justify-center">
-          <X className="w-[14px] h-[14px] text-zinc-500" strokeWidth={2.5} />
+        <span className="w-[32px] h-[32px] rounded-full bg-zinc-900/[0.07] flex items-center justify-center">
+          <X className="w-[15px] h-[15px] text-zinc-500" strokeWidth={2.5} />
         </span>
       </button>
 
