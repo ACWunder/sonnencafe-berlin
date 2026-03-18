@@ -45,7 +45,7 @@ export function InstallBanner() {
                 Sonnencafe Wien
               </p>
               <p className="text-[11px] text-zinc-400 font-body mt-0.5">
-                Zum Home-Bildschirm hinzufügen
+                Zum Home-Bildschirm hinzufügen für die beste Experience
               </p>
             </div>
           </div>
@@ -67,7 +67,7 @@ export function InstallBanner() {
               <span className="inline-flex items-center gap-1 bg-white border border-zinc-200 rounded-lg px-1.5 py-0.5 text-zinc-600">
                 <Share className="w-3 h-3" /> Teilen
               </span>
-              <span>unten in Safari</span>
+              <span>in der Menüleiste</span>
             </div>
             <div className="flex items-center gap-2 text-[12px] font-body text-zinc-500">
               <span className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center shrink-0 text-[10px] font-bold text-amber-600">2</span>
