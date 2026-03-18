@@ -316,9 +316,9 @@ export default function Home() {
           <div className="w-7 h-7 rounded-[8px] bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-sm shadow-amber-200">
             <Sun className="w-4 h-4 text-white" strokeWidth={2.5} />
           </div>
-          <h1 className="font-display font-bold text-zinc-900 text-[13px] leading-none tracking-tight whitespace-nowrap">
-            Sonnencafe Berlin
-            <span className="font-body font-normal text-zinc-400 text-[10px] ml-1">für Lotte</span>
+          <h1 className="flex flex-col leading-none tracking-tight whitespace-nowrap">
+            <span className="font-display font-bold text-zinc-900 text-[13px]">Sonnencafe Berlin</span>
+            <span className="font-body font-normal text-zinc-900 text-[9px] mt-[2px]">für Lotte</span>
           </h1>
         </div>
 
