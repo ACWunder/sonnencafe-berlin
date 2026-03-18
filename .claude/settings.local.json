@@ -20,7 +20,15 @@
       "WebFetch(domain:upload.wikimedia.org)",
       "WebFetch(domain:www.logo.wine)",
       "WebFetch(domain:logowik.com)",
-      "WebFetch(domain:uxwing.com)"
+      "WebFetch(domain:uxwing.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:data.europa.eu)",
+      "WebFetch(domain:www.wien.gv.at)",
+      "WebFetch(domain:www.data.gv.at)",
+      "WebFetch(domain:data.wien.gv.at)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:data.opendataportal.at)",
+      "WebFetch(domain:basemap.at)"
     ]
   }
 }
