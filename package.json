@@ -10,6 +10,7 @@
     "fetch-buildings": "node scripts/fetch-buildings.mjs"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "date-fns": "^3.6.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.379.0",
