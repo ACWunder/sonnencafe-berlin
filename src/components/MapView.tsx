@@ -377,8 +377,38 @@ export function MapView({
       [bounds.east, bounds.south],
       [bounds.west, bounds.south],
     ];
+    // Canvas source: MapLibre reads the canvas directly — no toDataURL needed.
     const source = map.getSource("shadow-source") as any; // eslint-disable-line @typescript-eslint/no-explicit-any
-    source?.updateImage({ url: canvas.toDataURL("image/png"), coordinates: coords });
+    source?.setCoordinates(coords);
+    map.triggerRepaint();
+  }
+
+  // Push only the buildings visible in the current viewport to the MapLibre
+  // buildings-source. Called on load and after pan/zoom. Keeps setData small
+  // (~2k features instead of 65k) so MapLibre never blocks the main thread.
+  function updateBuildingsSource() {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReadyRef.current) return;
+    const source = map.getSource("buildings-source");
+    if (!source) return;
+
+    const vp  = map.getBounds();
+    const buf = 0.003; // small overlap buffer so edges don't pop in
+    const visible = Array.from(buildingCacheRef.current.values()).filter((b) => {
+      const [lat, lng] = b.polygon[0];
+      return lat >= vp.getSouth() - buf && lat <= vp.getNorth() + buf
+          && lng >= vp.getWest()  - buf && lng <= vp.getEast()  + buf;
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (source as any).setData({
+      type: "FeatureCollection",
+      features: visible.map((b) => ({
+        type: "Feature",
+        geometry: { type: "Polygon", coordinates: [polygonToGeoJSON(b.polygon as [number,number][])] },
+        properties: { id: b.id },
+      })),
+    });
   }
 
   // Update café dot colors after pan/zoom. Shadow check uses per-café nearby buildings.
@@ -396,18 +426,8 @@ export function MapView({
         const map = mapInstanceRef.current;
         if (!map || !mapReadyRef.current) return;
 
-        // Push building polygons to the GeoJSON source
-        const source = map.getSource("buildings-source");
-        if (source) {
-          source.setData({
-            type: "FeatureCollection",
-            features: buildings.map((b) => ({
-              type: "Feature",
-              geometry: { type: "Polygon", coordinates: [polygonToGeoJSON(b.polygon as [number,number][])] },
-              properties: { id: b.id },
-            })),
-          });
-        }
+        // Only push viewport-visible buildings — much faster than all 65k at once
+        updateBuildingsSource();
 
         // Build visual shadow layer and compute initial café statuses
         updateShadowSource(buildings, timeStateRef.current);
@@ -517,19 +537,20 @@ export function MapView({
           },
         });
 
-        // Shadow source: raster image from the offscreen canvas.
-        // Image sources avoid WebGL fill-opacity accumulation from overlapping polygons.
-        // Initial coordinates are placeholder — updateShadowSource sets the real ones.
+        // Shadow source: canvas source — MapLibre reads the canvas directly via
+        // WebGL, no toDataURL / PNG-encoding needed. Coordinates are updated
+        // dynamically via source.setCoordinates() on every shadow re-render.
         map.addSource("shadow-source", {
-          type: "image",
-          url: shadowCanvas.toDataURL("image/png"), // blank initially
+          type: "canvas",
+          canvas: shadowCanvas,
+          animate: false, // we call map.triggerRepaint() manually after each render
           coordinates: [
             [DISTRICT_BOUNDS.west, DISTRICT_BOUNDS.north],
             [DISTRICT_BOUNDS.east, DISTRICT_BOUNDS.north],
             [DISTRICT_BOUNDS.east, DISTRICT_BOUNDS.south],
             [DISTRICT_BOUNDS.west, DISTRICT_BOUNDS.south],
           ],
-        });
+        } as Parameters<typeof map.addSource>[1]);
 
         map.addSource("buildings-source", {
           type: "geojson",
@@ -642,7 +663,9 @@ export function MapView({
           if (shadowDebounceRef.current) clearTimeout(shadowDebounceRef.current);
           shadowDebounceRef.current = setTimeout(() => {
             const all = Array.from(buildingCacheRef.current.values());
-            if (all.length > 0) updateShadowSource(all, timeStateRef.current);
+            if (all.length === 0) return;
+            updateBuildingsSource();
+            updateShadowSource(all, timeStateRef.current);
           }, 200);
         });
 
