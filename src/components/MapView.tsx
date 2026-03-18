@@ -10,38 +10,64 @@ import type { BuildingFeature } from "@/app/api/buildings/route";
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
-const DISTRICT_BOUNDS = {
+// Full Berlin area (used for map bounds / fallback)
+const BERLIN_BOUNDS = {
   south: 52.4546381, west: 13.3362902,
   north: 52.5585856, east: 13.4721073,
 } as const;
 
-const MAP_CENTER: [number, number] = [
-  (DISTRICT_BOUNDS.south + DISTRICT_BOUNDS.north) / 2,
-  (DISTRICT_BOUNDS.west  + DISTRICT_BOUNDS.east)  / 2,
+const BERLIN_CENTER: [number, number] = [
+  (BERLIN_BOUNDS.south + BERLIN_BOUNDS.north) / 2,
+  (BERLIN_BOUNDS.west  + BERLIN_BOUNDS.east)  / 2,
 ];
-const NEUBAU_CENTER = MAP_CENTER;
-const FALLBACK_HEIGHT = 18;
 
-// OpenFreeMap positron — free, no API key, clean light style
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/positron";
+const FALLBACK_HEIGHT = 18;
+const _ZOOM16_PX = (Math.pow(2, 16) * 256) / 360; // px per degree at zoom 16
 
-// Shadow canvas: pre-rendered at a fixed resolution and fed to MapLibre as
-// a raster image source. A single ctx.fill() call on the full path produces
-// the union of all shadow polygons — overlapping areas are filled only once
-// so opacity never accumulates even where building shadows stack.
-//
-// Resolution matches SHADOW_RENDER_ZOOM=16 (same as the old Leaflet approach)
-// so shadow edges are crisp at zoom 16 and still sharp at zoom 17.
-const _ZOOM16_PX  = (Math.pow(2, 16) * 256) / 360; // pixels per degree at zoom 16
-const SHADOW_W    = Math.ceil((DISTRICT_BOUNDS.east - DISTRICT_BOUNDS.west) * _ZOOM16_PX); // ~1966
-const SHADOW_H    = Math.ceil((DISTRICT_BOUNDS.north - DISTRICT_BOUNDS.south) * _ZOOM16_PX); // ~2560
-// MapLibre image-source corner order: top-left, top-right, bottom-right, bottom-left
-const SHADOW_COORDS: [[number,number],[number,number],[number,number],[number,number]] = [
-  [DISTRICT_BOUNDS.west, DISTRICT_BOUNDS.north],
-  [DISTRICT_BOUNDS.east, DISTRICT_BOUNDS.north],
-  [DISTRICT_BOUNDS.east, DISTRICT_BOUNDS.south],
-  [DISTRICT_BOUNDS.west, DISTRICT_BOUNDS.south],
-];
+// Per-district config: shadow canvas bounds (with border buffer for accuracy),
+// map fly-to center [lng, lat], and buildings file path.
+type DistrictBounds = { south: number; west: number; north: number; east: number };
+const DISTRICT_CONFIG: Record<string, {
+  bounds: DistrictBounds;
+  center: [number, number]; // [lng, lat] for MapLibre
+  file: string;
+}> = {
+  "Mitte": {
+    bounds: { south: 52.498, west: 13.355, north: 52.547, east: 13.435 },
+    center: [13.397, 52.520],
+    file: "/buildings-mitte.json",
+  },
+  "Kreuzberg": {
+    bounds: { south: 52.476, west: 13.362, north: 52.515, east: 13.462 },
+    center: [13.410, 52.497],
+    file: "/buildings-kreuzberg.json",
+  },
+  "Prenzlauer Berg": {
+    bounds: { south: 52.514, west: 13.390, north: 52.566, east: 13.477 },
+    center: [13.435, 52.540],
+    file: "/buildings-prenzlauer-berg.json",
+  },
+  "Schöneberg": {
+    bounds: { south: 52.448, west: 13.325, north: 52.510, east: 13.420 },
+    center: [13.373, 52.480],
+    file: "/buildings-schoeneberg.json",
+  },
+};
+
+function shadowCanvasSize(b: DistrictBounds) {
+  return {
+    w: Math.ceil((b.east - b.west) * _ZOOM16_PX),
+    h: Math.ceil((b.north - b.south) * _ZOOM16_PX),
+  };
+}
+
+function shadowCoords(b: DistrictBounds): [[number,number],[number,number],[number,number],[number,number]] {
+  return [
+    [b.west, b.north], [b.east, b.north],
+    [b.east, b.south], [b.west, b.south],
+  ];
+}
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -52,6 +78,7 @@ interface MapViewProps {
   onCafeSelect: (cafe: Cafe | null) => void;
   onSunRemaining: (data: Record<string, number | null>) => void;
   onSunTimeline: (data: SunTimelineData) => void;
+  activeDistrict: string;
 }
 
 // ─── sun computation (unchanged) ─────────────────────────────────────────────
@@ -161,10 +188,13 @@ function renderShadowCanvas(
   canvas: HTMLCanvasElement,
   allBuildings: BuildingFeature[],
   timeState: TimeState,
+  bounds: DistrictBounds,
 ) {
   const ctx    = canvas.getContext("2d")!;
   const date   = new Date(`${timeState.date}T${timeState.time}:00`);
-  const sunPos = getSunPosition(NEUBAU_CENTER[0], NEUBAU_CENTER[1], date);
+  const centerLat = (bounds.north + bounds.south) / 2;
+  const centerLng = (bounds.west  + bounds.east)  / 2;
+  const sunPos = getSunPosition(centerLat, centerLng, date);
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "#334155";
@@ -173,6 +203,9 @@ function renderShadowCanvas(
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     return;
   }
+
+  const bW = bounds.east - bounds.west;
+  const bH = bounds.north - bounds.south;
 
   ctx.beginPath();
   for (const b of allBuildings) {
@@ -183,9 +216,8 @@ function renderShadowCanvas(
     if (shadow.length < 3) continue;
     let first = true;
     for (const [lat, lng] of shadow as [number, number][]) {
-      // Equirectangular projection — negligible error for a ~6 km area
-      const x = (lng - DISTRICT_BOUNDS.west)  / (DISTRICT_BOUNDS.east  - DISTRICT_BOUNDS.west)  * canvas.width;
-      const y = (DISTRICT_BOUNDS.north - lat)  / (DISTRICT_BOUNDS.north - DISTRICT_BOUNDS.south) * canvas.height;
+      const x = (lng - bounds.west)  / bW * canvas.width;
+      const y = (bounds.north - lat) / bH * canvas.height;
       if (first) { ctx.moveTo(x, y); first = false; }
       else         ctx.lineTo(x, y);
     }
@@ -209,15 +241,19 @@ function polygonToGeoJSON(polygon: [number, number][]): number[][] {
 
 export function MapView({
   timeState, cafes, selectedCafe, onCafeSelect, onSunRemaining, onSunTimeline,
+  activeDistrict,
 }: MapViewProps) {
   const mapRef         = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapInstanceRef = useRef<any>(null);
   const mapReadyRef    = useRef(false);  // true once map 'load' event fired
 
-  const shadowCanvasRef   = useRef<HTMLCanvasElement | null>(null);
-  const buildingCacheRef  = useRef<Map<number, BuildingFeature>>(new Map());
-  const sunGenRef         = useRef(0);
+  const shadowCanvasRef    = useRef<HTMLCanvasElement | null>(null);
+  const buildingCacheRef   = useRef<Map<number, BuildingFeature>>(new Map());
+  const sunGenRef          = useRef(0);
+  const currentBoundsRef   = useRef<DistrictBounds>(DISTRICT_CONFIG["Mitte"].bounds);
+  const activeDistrictRef  = useRef(activeDistrict);
+  activeDistrictRef.current = activeDistrict;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const locationMarkerRef = useRef<any>(null);
 
@@ -251,7 +287,7 @@ export function MapView({
 
     const ts     = timeStateRef.current;
     const date   = new Date(`${ts.date}T${ts.time}:00`);
-    const sunPos = getSunPosition(NEUBAU_CENTER[0], NEUBAU_CENTER[1], date);
+    const sunPos = getSunPosition(BERLIN_CENTER[0], BERLIN_CENTER[1], date);
     const OFFSET_M = 10;
     const azRad  = (sunPos.azimuthDeg * Math.PI) / 180;
     const selId  = selectedCafeRef.current?.id ?? null;
@@ -353,9 +389,10 @@ export function MapView({
     const canvas = shadowCanvasRef.current;
     const map    = mapInstanceRef.current;
     if (!canvas || !map || !mapReadyRef.current) return;
-    renderShadowCanvas(canvas, allBuildings, ts);
+    const bounds = currentBoundsRef.current;
+    renderShadowCanvas(canvas, allBuildings, ts, bounds);
     const source = map.getSource("shadow-source") as any; // eslint-disable-line @typescript-eslint/no-explicit-any
-    source?.updateImage({ url: canvas.toDataURL("image/png"), coordinates: SHADOW_COORDS });
+    source?.updateImage({ url: canvas.toDataURL("image/png"), coordinates: shadowCoords(bounds) });
   }
 
   // Update café dot colors after pan/zoom. Shadow check uses per-café nearby buildings.
@@ -363,9 +400,23 @@ export function MapView({
     updateCafesSource(false);
   }
 
-  function loadStaticBuildings() {
+  function loadDistrictBuildings(district: string) {
+    const config = DISTRICT_CONFIG[district];
+    if (!config) return;
+
+    // Resize shadow canvas for this district's bounds
+    const { w, h } = shadowCanvasSize(config.bounds);
+    const canvas = shadowCanvasRef.current;
+    if (canvas) { canvas.width = w; canvas.height = h; }
+    currentBoundsRef.current = config.bounds;
+
+    // Cancel any in-flight sun computation from the previous district
+    sunGenRef.current++;
+
     setFetching(true);
-    fetch("/buildings-cache.json")
+    buildingCacheRef.current.clear();
+
+    fetch(config.file)
       .then((r) => r.json())
       .then(({ buildings }: { buildings: BuildingFeature[] }) => {
         buildings.forEach((b) => buildingCacheRef.current.set(b.id, b));
@@ -373,10 +424,10 @@ export function MapView({
         const map = mapInstanceRef.current;
         if (!map || !mapReadyRef.current) return;
 
-        // Push building polygons to the GeoJSON source
         const source = map.getSource("buildings-source");
         if (source) {
-          source.setData({
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (source as any).setData({
             type: "FeatureCollection",
             features: buildings.map((b) => ({
               type: "Feature",
@@ -386,7 +437,6 @@ export function MapView({
           });
         }
 
-        // Build visual shadow layer and compute initial café statuses
         updateShadowSource(buildings, timeStateRef.current);
         updateCafesSource(true);
         setFetching(false);
@@ -426,7 +476,7 @@ export function MapView({
       const map = new maplibregl.Map({
         container: mapRef.current,
         style: MAP_STYLE,
-        center: [MAP_CENTER[1], MAP_CENTER[0]], // MapLibre: [lng, lat]
+        center: DISTRICT_CONFIG[activeDistrictRef.current]?.center ?? [13.397, 52.520], // [lng, lat]
         zoom: 14,
         minZoom: 12,
         maxZoom: 19,
@@ -461,11 +511,16 @@ export function MapView({
           true,
         ]);
 
-        // ── shadow canvas ──────────────────────────────────────────────────
+        // ── shadow canvas — sized for the initial district (Mitte) ────────
+
+        const initBounds = DISTRICT_CONFIG[activeDistrictRef.current]?.bounds
+          ?? DISTRICT_CONFIG["Mitte"].bounds;
+        const { w: initW, h: initH } = shadowCanvasSize(initBounds);
+        currentBoundsRef.current = initBounds;
 
         const shadowCanvas = document.createElement("canvas");
-        shadowCanvas.width  = SHADOW_W;
-        shadowCanvas.height = SHADOW_H;
+        shadowCanvas.width  = initW;
+        shadowCanvas.height = initH;
         shadowCanvasRef.current = shadowCanvas;
 
         // ── sources ────────────────────────────────────────────────────────
@@ -475,7 +530,7 @@ export function MapView({
           data: { type: "FeatureCollection", features: [] },
         });
 
-        // Static sunny-district overlay (amber rectangle over DISTRICT_BOUNDS)
+        // Static sunny-district overlay (amber rectangle over full Berlin area)
         map.addSource("sunny-overlay-source", {
           type: "geojson",
           data: {
@@ -483,11 +538,11 @@ export function MapView({
             geometry: {
               type: "Polygon",
               coordinates: [[
-                [DISTRICT_BOUNDS.west,  DISTRICT_BOUNDS.south],
-                [DISTRICT_BOUNDS.east,  DISTRICT_BOUNDS.south],
-                [DISTRICT_BOUNDS.east,  DISTRICT_BOUNDS.north],
-                [DISTRICT_BOUNDS.west,  DISTRICT_BOUNDS.north],
-                [DISTRICT_BOUNDS.west,  DISTRICT_BOUNDS.south],
+                [BERLIN_BOUNDS.west,  BERLIN_BOUNDS.south],
+                [BERLIN_BOUNDS.east,  BERLIN_BOUNDS.south],
+                [BERLIN_BOUNDS.east,  BERLIN_BOUNDS.north],
+                [BERLIN_BOUNDS.west,  BERLIN_BOUNDS.north],
+                [BERLIN_BOUNDS.west,  BERLIN_BOUNDS.south],
               ]],
             },
             properties: {},
@@ -499,7 +554,7 @@ export function MapView({
         map.addSource("shadow-source", {
           type: "image",
           url: shadowCanvas.toDataURL("image/png"), // blank initially
-          coordinates: SHADOW_COORDS,
+          coordinates: shadowCoords(initBounds),
         });
 
         map.addSource("buildings-source", {
@@ -613,7 +668,7 @@ export function MapView({
 
         // ── load data ─────────────────────────────────────────────────────
 
-        loadStaticBuildings();
+        loadDistrictBuildings(activeDistrictRef.current);
         loadGreenAreas();
       });
     });
@@ -665,6 +720,17 @@ export function MapView({
       duration: 400,
     });
   }, [selectedCafe]);
+
+  // ── reload buildings when district changes ────────────────────────────────
+  useEffect(() => {
+    if (!mapInstanceRef.current || !mapReadyRef.current) return;
+    const config = DISTRICT_CONFIG[activeDistrict];
+    if (config) {
+      mapInstanceRef.current.flyTo({ center: config.center, zoom: 14.5, duration: 800 });
+    }
+    loadDistrictBuildings(activeDistrict);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeDistrict]);
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
@@ -769,7 +835,7 @@ function Legend() {
 // ─── sun compass ──────────────────────────────────────────────────────────────
 function SunCompass({ timeState, onNorth }: { timeState: TimeState; onNorth?: () => void }) {
   const date = new Date(`${timeState.date}T${timeState.time}:00`);
-  const pos  = getSunPosition(NEUBAU_CENTER[0], NEUBAU_CENTER[1], date);
+  const pos  = getSunPosition(BERLIN_CENTER[0], BERLIN_CENTER[1], date);
   const isUp = pos.altitudeDeg > 0;
 
   const size         = 52;
@@ -829,7 +895,7 @@ function SunCompass({ timeState, onNorth }: { timeState: TimeState; onNorth?: ()
 // ─── sun info ─────────────────────────────────────────────────────────────────
 function SunInfoOverlay({ timeState }: { timeState: TimeState }) {
   const date  = new Date(`${timeState.date}T${timeState.time}:00`);
-  const times = getSunTimes(NEUBAU_CENTER[0], NEUBAU_CENTER[1], date);
+  const times = getSunTimes(BERLIN_CENTER[0], BERLIN_CENTER[1], date);
   const fmt   = (d: Date) => d.toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" });
 
   return (

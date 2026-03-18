@@ -1,7 +1,7 @@
 // src/app/page.tsx
 "use client";
 
-import { useState, useEffect, useMemo, useRef, useCallback, useDeferredValue, useTransition } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, useDeferredValue } from "react";
 import { format } from "date-fns";
 import { Sun, Search, MapPin, X, ExternalLink, Info, Menu, SlidersHorizontal } from "lucide-react";
 import type { Cafe, TimeState, SunTimeline, SunTimelineData } from "@/types";
@@ -164,48 +164,15 @@ export default function Home() {
   const filterPanelRef = useRef<HTMLDivElement>(null);
   const filterButtonRef = useRef<HTMLButtonElement>(null);
 
-  // ── District filter ──────────────────────────────────────────────────────────
+  // ── District filter (single-select) ──────────────────────────────────────────
   const [showFilter, setShowFilter] = useState(false);
+  const ALL_DISTRICTS = ["Mitte", "Kreuzberg", "Prenzlauer Berg", "Schöneberg"] as const;
+  const [activeDistrict, setActiveDistrict] = useState<string>("Mitte");
 
-  // visualDistricts: updates instantly → drives checkbox appearance only
-  // filterDistricts: updates in a transition → drives sidebar + map (non-blocking)
-  const [visualDistricts, setVisualDistricts] = useState<Set<string> | null>(null);
-  const [filterDistricts, setFilterDistricts] = useState<Set<string> | null>(null);
-  const [, startFilterTransition] = useTransition();
-
-  const allDistricts = useMemo(() => {
-    const set = new Set(cafes.map((c) => c.district ?? "Berlin"));
-    return Array.from(set).sort((a, b) => {
-      const na = parseInt(a) || 99;
-      const nb = parseInt(b) || 99;
-      return na - nb;
-    });
-  }, [cafes]);
-
-  const districtFilteredCafes = useMemo(() => {
-    if (!filterDistricts) return cafes;
-    return cafes.filter((c) => filterDistricts.has(c.district ?? "Berlin"));
-  }, [cafes, filterDistricts]);
-
-  const toggleDistrict = useCallback((d: string) => {
-    const computeNext = (prev: Set<string> | null) => {
-      const current = prev ?? new Set(allDistricts);
-      const next = new Set(current);
-      if (next.has(d)) next.delete(d); else next.add(d);
-      return next.size === allDistricts.length ? null : next;
-    };
-    // Instant: checkbox flips immediately
-    setVisualDistricts((prev) => computeNext(prev));
-    // Non-blocking: sidebar + map update without blocking the UI
-    startFilterTransition(() => setFilterDistricts((prev) => computeNext(prev)));
-  }, [allDistricts]);
-
-  const resetFilter = useCallback(() => {
-    setVisualDistricts(null);
-    startFilterTransition(() => setFilterDistricts(null));
-  }, []);
-
-  const filterActive = visualDistricts !== null && visualDistricts.size < allDistricts.length;
+  const districtFilteredCafes = useMemo(
+    () => cafes.filter((c) => (c.district ?? "Berlin") === activeDistrict),
+    [cafes, activeDistrict],
+  );
 
   // Tap-to-close filter panel: close on short tap on map, not on drag/zoom
   useEffect(() => {
@@ -637,6 +604,7 @@ export default function Home() {
             onCafeSelect={setSelectedCafe}
             onSunRemaining={handleSunRemaining}
             onSunTimeline={handleSunTimeline}
+            activeDistrict={activeDistrict}
           />
 
           {/* Hamburger — floating below app icon, mobile only */}
@@ -651,62 +619,32 @@ export default function Home() {
           <button
             ref={filterButtonRef}
             onClick={() => { setShowFilter((v) => !v); setSelectedCafe(null); }}
-            className={`absolute top-14 left-3 z-[500] w-9 h-9 backdrop-blur-xl rounded-2xl border shadow-lg shadow-zinc-200/40 flex items-center justify-center active:scale-95 transition-all ${
-              filterActive
-                ? "bg-amber-400 border-amber-300 text-white"
-                : "bg-white/90 border-zinc-100 text-zinc-500"
-            }`}
-            title="Bezirke filtern"
+            className="absolute top-14 left-3 z-[500] w-9 h-9 bg-amber-400 border border-amber-300 text-white backdrop-blur-xl rounded-2xl shadow-lg shadow-zinc-200/40 flex items-center justify-center active:scale-95 transition-all"
+            title="Bezirk wählen"
           >
             <SlidersHorizontal className="w-4 h-4" />
           </button>
 
-          {/* Filter panel */}
+          {/* Filter panel — single-select */}
           {showFilter && (
             <div ref={filterPanelRef} className="absolute top-[6.25rem] left-3 z-[502] w-52 bg-white/95 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-xl shadow-zinc-200/50 overflow-hidden">
-                <div className="flex items-center justify-between pl-3.5 pr-3.5 pt-2.5 pb-2">
-                  <span className="text-[10px] font-body font-bold uppercase tracking-widest text-zinc-400">Bezirke</span>
-                  <button
-                    onClick={() => {
-                      const allChecked = !visualDistricts || visualDistricts.size === allDistricts.length;
-                      if (allChecked) {
-                        const empty = new Set<string>();
-                        setVisualDistricts(empty);
-                        startFilterTransition(() => setFilterDistricts(empty));
-                      } else {
-                        resetFilter();
-                      }
-                    }}
-                    className="text-[11px] font-body font-semibold text-amber-500 active:opacity-70"
-                  >
-                    {!visualDistricts || visualDistricts.size === allDistricts.length ? "Keine" : "Alle"}
-                  </button>
+                <div className="pl-3.5 pr-3.5 pt-2.5 pb-2">
+                  <span className="text-[10px] font-body font-bold uppercase tracking-widest text-zinc-400">Bezirk</span>
                 </div>
                 <div className="pb-2">
-                  {allDistricts.map((d) => {
-                    const checked = visualDistricts ? visualDistricts.has(d) : true;
+                  {ALL_DISTRICTS.map((d) => {
+                    const active = d === activeDistrict;
                     return (
-                      <label
+                      <button
                         key={d}
-                        onClick={() => toggleDistrict(d)}
-                        className="flex items-center gap-2.5 px-3.5 py-2 cursor-pointer hover:bg-zinc-50 active:bg-zinc-100 transition-colors"
+                        onClick={() => { setActiveDistrict(d); setShowFilter(false); setSelectedCafe(null); }}
+                        className={`w-full text-left flex items-center gap-2.5 px-3.5 py-2.5 transition-colors ${active ? "bg-amber-50" : "hover:bg-zinc-50 active:bg-zinc-100"}`}
                       >
-                        <span className={`w-4 h-4 rounded-[5px] border flex items-center justify-center shrink-0 transition-all duration-150 ${
-                          checked ? "bg-amber-400 border-amber-400" : "bg-white border-zinc-200"
-                        }`}>
-                          <svg
-                            width="9" height="7" viewBox="0 0 9 7" fill="none"
-                            style={{
-                              opacity: checked ? 1 : 0,
-                              transform: checked ? "scale(1)" : "scale(0.5)",
-                              transition: "opacity 0.15s ease, transform 0.15s ease",
-                            }}
-                          >
-                            <path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
+                        <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${active ? "border-amber-400" : "border-zinc-200"}`}>
+                          {active && <span className="w-2 h-2 rounded-full bg-amber-400" />}
                         </span>
-                        <span className="text-[13px] font-body text-zinc-700">{d}</span>
-                      </label>
+                        <span className={`text-[13px] font-body ${active ? "text-zinc-900 font-semibold" : "text-zinc-700"}`}>{d}</span>
+                      </button>
                     );
                   })}
                 </div>
