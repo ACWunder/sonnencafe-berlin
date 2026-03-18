@@ -25,11 +25,23 @@ const FALLBACK_HEIGHT = 18;
 // OpenFreeMap positron — free, no API key, clean light style
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/positron";
 
-// Shadow canvas: viewport-based — rendered only for the currently visible map
-// area. This keeps the canvas small (2048×2048) and the building count low
-// (~2k-5k instead of 65k), making re-renders fast on pan/zoom.
-const SHADOW_CANVAS_SIZE = 2048; // px — enough for crisp shadows at zoom 17
-const SHADOW_BUFFER_DEG  = 0.008; // ~880 m — covers max 300 m shadow + margin
+// Shadow canvas: pre-rendered at a fixed resolution and fed to MapLibre as
+// a raster image source. A single ctx.fill() call on the full path produces
+// the union of all shadow polygons — overlapping areas are filled only once
+// so opacity never accumulates even where building shadows stack.
+//
+// Resolution matches SHADOW_RENDER_ZOOM=16 (same as the old Leaflet approach)
+// so shadow edges are crisp at zoom 16 and still sharp at zoom 17.
+const _ZOOM16_PX  = (Math.pow(2, 16) * 256) / 360; // pixels per degree at zoom 16
+const SHADOW_W    = Math.ceil((DISTRICT_BOUNDS.east - DISTRICT_BOUNDS.west) * _ZOOM16_PX); // ~1966
+const SHADOW_H    = Math.ceil((DISTRICT_BOUNDS.north - DISTRICT_BOUNDS.south) * _ZOOM16_PX); // ~2560
+// MapLibre image-source corner order: top-left, top-right, bottom-right, bottom-left
+const SHADOW_COORDS: [[number,number],[number,number],[number,number],[number,number]] = [
+  [DISTRICT_BOUNDS.west, DISTRICT_BOUNDS.north],
+  [DISTRICT_BOUNDS.east, DISTRICT_BOUNDS.north],
+  [DISTRICT_BOUNDS.east, DISTRICT_BOUNDS.south],
+  [DISTRICT_BOUNDS.west, DISTRICT_BOUNDS.south],
+];
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -145,21 +157,14 @@ function pointInPolygon(lat: number, lng: number, poly: [number, number][]): boo
 // Because the entire path is filled at once, overlapping building shadows
 // produce no opacity stacking — the result is a flat uniform dark layer.
 
-interface ViewportBounds {
-  west: number; east: number; north: number; south: number;
-}
-
 function renderShadowCanvas(
   canvas: HTMLCanvasElement,
-  visibleBuildings: BuildingFeature[],
+  allBuildings: BuildingFeature[],
   timeState: TimeState,
-  bounds: ViewportBounds,
 ) {
   const ctx    = canvas.getContext("2d")!;
   const date   = new Date(`${timeState.date}T${timeState.time}:00`);
-  const centerLat = (bounds.north + bounds.south) / 2;
-  const centerLng = (bounds.west  + bounds.east)  / 2;
-  const sunPos = getSunPosition(centerLat, centerLng, date);
+  const sunPos = getSunPosition(NEUBAU_CENTER[0], NEUBAU_CENTER[1], date);
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "#334155";
@@ -169,11 +174,8 @@ function renderShadowCanvas(
     return;
   }
 
-  const w = bounds.east  - bounds.west;
-  const h = bounds.north - bounds.south;
-
   ctx.beginPath();
-  for (const b of visibleBuildings) {
+  for (const b of allBuildings) {
     const shadow = calcShadowPolygon(
       b.polygon, b.height ?? FALLBACK_HEIGHT,
       sunPos.altitudeDeg, sunPos.azimuthDeg,
@@ -181,8 +183,9 @@ function renderShadowCanvas(
     if (shadow.length < 3) continue;
     let first = true;
     for (const [lat, lng] of shadow as [number, number][]) {
-      const x = (lng - bounds.west)  / w * canvas.width;
-      const y = (bounds.north - lat) / h * canvas.height;
+      // Equirectangular projection — negligible error for a ~6 km area
+      const x = (lng - DISTRICT_BOUNDS.west)  / (DISTRICT_BOUNDS.east  - DISTRICT_BOUNDS.west)  * canvas.width;
+      const y = (DISTRICT_BOUNDS.north - lat)  / (DISTRICT_BOUNDS.north - DISTRICT_BOUNDS.south) * canvas.height;
       if (first) { ctx.moveTo(x, y); first = false; }
       else         ctx.lineTo(x, y);
     }
@@ -212,10 +215,9 @@ export function MapView({
   const mapInstanceRef = useRef<any>(null);
   const mapReadyRef    = useRef(false);  // true once map 'load' event fired
 
-  const shadowCanvasRef    = useRef<HTMLCanvasElement | null>(null);
-  const buildingCacheRef   = useRef<Map<number, BuildingFeature>>(new Map());
-  const sunGenRef          = useRef(0);
-  const shadowDebounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shadowCanvasRef   = useRef<HTMLCanvasElement | null>(null);
+  const buildingCacheRef  = useRef<Map<number, BuildingFeature>>(new Map());
+  const sunGenRef         = useRef(0);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const locationMarkerRef = useRef<any>(null);
 
@@ -347,68 +349,13 @@ export function MapView({
   }
 
   // Render shadow canvas and push it to the MapLibre image source.
-  // Only processes buildings visible in the current viewport + buffer.
   function updateShadowSource(allBuildings: BuildingFeature[], ts: TimeState) {
     const canvas = shadowCanvasRef.current;
     const map    = mapInstanceRef.current;
     if (!canvas || !map || !mapReadyRef.current) return;
-
-    const vp  = map.getBounds();
-    const buf = SHADOW_BUFFER_DEG;
-    const bounds: ViewportBounds = {
-      west:  vp.getWest()  - buf,
-      east:  vp.getEast()  + buf,
-      south: vp.getSouth() - buf,
-      north: vp.getNorth() + buf,
-    };
-
-    // Filter to viewport + buffer — O(n) but fast in JS (~1 ms for 65k entries)
-    const visible = allBuildings.filter((b) => {
-      const [lat, lng] = b.polygon[0];
-      return lat >= bounds.south && lat <= bounds.north
-          && lng >= bounds.west  && lng <= bounds.east;
-    });
-
-    renderShadowCanvas(canvas, visible, ts, bounds);
-
-    const coords: [[number,number],[number,number],[number,number],[number,number]] = [
-      [bounds.west, bounds.north],
-      [bounds.east, bounds.north],
-      [bounds.east, bounds.south],
-      [bounds.west, bounds.south],
-    ];
-    // Canvas source: MapLibre reads the canvas directly — no toDataURL needed.
+    renderShadowCanvas(canvas, allBuildings, ts);
     const source = map.getSource("shadow-source") as any; // eslint-disable-line @typescript-eslint/no-explicit-any
-    source?.setCoordinates(coords);
-    map.triggerRepaint();
-  }
-
-  // Push only the buildings visible in the current viewport to the MapLibre
-  // buildings-source. Called on load and after pan/zoom. Keeps setData small
-  // (~2k features instead of 65k) so MapLibre never blocks the main thread.
-  function updateBuildingsSource() {
-    const map = mapInstanceRef.current;
-    if (!map || !mapReadyRef.current) return;
-    const source = map.getSource("buildings-source");
-    if (!source) return;
-
-    const vp  = map.getBounds();
-    const buf = 0.003; // small overlap buffer so edges don't pop in
-    const visible = Array.from(buildingCacheRef.current.values()).filter((b) => {
-      const [lat, lng] = b.polygon[0];
-      return lat >= vp.getSouth() - buf && lat <= vp.getNorth() + buf
-          && lng >= vp.getWest()  - buf && lng <= vp.getEast()  + buf;
-    });
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (source as any).setData({
-      type: "FeatureCollection",
-      features: visible.map((b) => ({
-        type: "Feature",
-        geometry: { type: "Polygon", coordinates: [polygonToGeoJSON(b.polygon as [number,number][])] },
-        properties: { id: b.id },
-      })),
-    });
+    source?.updateImage({ url: canvas.toDataURL("image/png"), coordinates: SHADOW_COORDS });
   }
 
   // Update café dot colors after pan/zoom. Shadow check uses per-café nearby buildings.
@@ -426,8 +373,18 @@ export function MapView({
         const map = mapInstanceRef.current;
         if (!map || !mapReadyRef.current) return;
 
-        // Only push viewport-visible buildings — much faster than all 65k at once
-        updateBuildingsSource();
+        // Push building polygons to the GeoJSON source
+        const source = map.getSource("buildings-source");
+        if (source) {
+          source.setData({
+            type: "FeatureCollection",
+            features: buildings.map((b) => ({
+              type: "Feature",
+              geometry: { type: "Polygon", coordinates: [polygonToGeoJSON(b.polygon as [number,number][])] },
+              properties: { id: b.id },
+            })),
+          });
+        }
 
         // Build visual shadow layer and compute initial café statuses
         updateShadowSource(buildings, timeStateRef.current);
@@ -507,8 +464,8 @@ export function MapView({
         // ── shadow canvas ──────────────────────────────────────────────────
 
         const shadowCanvas = document.createElement("canvas");
-        shadowCanvas.width  = SHADOW_CANVAS_SIZE;
-        shadowCanvas.height = SHADOW_CANVAS_SIZE;
+        shadowCanvas.width  = SHADOW_W;
+        shadowCanvas.height = SHADOW_H;
         shadowCanvasRef.current = shadowCanvas;
 
         // ── sources ────────────────────────────────────────────────────────
@@ -537,20 +494,13 @@ export function MapView({
           },
         });
 
-        // Shadow source: canvas source — MapLibre reads the canvas directly via
-        // WebGL, no toDataURL / PNG-encoding needed. Coordinates are updated
-        // dynamically via source.setCoordinates() on every shadow re-render.
+        // Shadow source: raster image from the offscreen canvas.
+        // Image sources avoid WebGL fill-opacity accumulation from overlapping polygons.
         map.addSource("shadow-source", {
-          type: "canvas",
-          canvas: shadowCanvas,
-          animate: false, // we call map.triggerRepaint() manually after each render
-          coordinates: [
-            [DISTRICT_BOUNDS.west, DISTRICT_BOUNDS.north],
-            [DISTRICT_BOUNDS.east, DISTRICT_BOUNDS.north],
-            [DISTRICT_BOUNDS.east, DISTRICT_BOUNDS.south],
-            [DISTRICT_BOUNDS.west, DISTRICT_BOUNDS.south],
-          ],
-        } as Parameters<typeof map.addSource>[1]);
+          type: "image",
+          url: shadowCanvas.toDataURL("image/png"), // blank initially
+          coordinates: SHADOW_COORDS,
+        });
 
         map.addSource("buildings-source", {
           type: "geojson",
@@ -655,18 +605,10 @@ export function MapView({
 
         // ── viewport events ───────────────────────────────────────────────
 
-        // After pan/zoom: refresh café dot colors immediately, then re-render
-        // the shadow canvas for the new viewport (debounced 200 ms so it only
-        // fires once the user has stopped moving).
+        // Recompute viewport shadows and redraw café dots after any pan/zoom.
+        // Shadow visual layer needs no repositioning — MapLibre handles that.
         map.on("moveend", () => {
           refreshViewportShadows();
-          if (shadowDebounceRef.current) clearTimeout(shadowDebounceRef.current);
-          shadowDebounceRef.current = setTimeout(() => {
-            const all = Array.from(buildingCacheRef.current.values());
-            if (all.length === 0) return;
-            updateBuildingsSource();
-            updateShadowSource(all, timeStateRef.current);
-          }, 200);
         });
 
         // ── load data ─────────────────────────────────────────────────────
