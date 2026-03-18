@@ -106,13 +106,10 @@ export default function Home() {
     });
   }, [cafes]);
 
-  // Deferred: sidebar + map update in a low-priority pass so checkbox clicks stay instant
-  const deferredDistricts = useDeferredValue(selectedDistricts);
-
   const districtFilteredCafes = useMemo(() => {
-    if (!deferredDistricts) return cafes;
-    return cafes.filter((c) => deferredDistricts.has(c.district ?? "Wien"));
-  }, [cafes, deferredDistricts]);
+    if (!selectedDistricts) return cafes;
+    return cafes.filter((c) => selectedDistricts.has(c.district ?? "Wien"));
+  }, [cafes, selectedDistricts]);
 
   const toggleDistrict = useCallback((d: string) => {
     setSelectedDistricts((prev) => {
@@ -125,7 +122,7 @@ export default function Home() {
 
   const filterActive = selectedDistricts !== null && selectedDistricts.size < allDistricts.length;
 
-  const deferredCafesForMap = districtFilteredCafes; // already deferred via deferredDistricts
+  const deferredCafesForMap = useDeferredValue(districtFilteredCafes);
 
   const handleSunRemaining = useCallback((data: Record<string, number | null>) => {
     setSunRemaining(data);
@@ -536,14 +533,19 @@ export default function Home() {
                         onClick={() => toggleDistrict(d)}
                         className="flex items-center gap-2.5 px-3.5 py-2 cursor-pointer hover:bg-zinc-50 active:bg-zinc-100 transition-colors"
                       >
-                        <span className={`w-4 h-4 rounded-[5px] border flex items-center justify-center shrink-0 transition-colors ${
+                        <span className={`w-4 h-4 rounded-[5px] border flex items-center justify-center shrink-0 transition-all duration-150 ${
                           checked ? "bg-amber-400 border-amber-400" : "bg-white border-zinc-200"
                         }`}>
-                          {checked && (
-                            <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
-                              <path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                            </svg>
-                          )}
+                          <svg
+                            width="9" height="7" viewBox="0 0 9 7" fill="none"
+                            style={{
+                              opacity: checked ? 1 : 0,
+                              transform: checked ? "scale(1)" : "scale(0.5)",
+                              transition: "opacity 0.15s ease, transform 0.15s ease",
+                            }}
+                          >
+                            <path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
                         </span>
                         <span className="text-[13px] font-body text-zinc-700">{d}</span>
                       </label>
