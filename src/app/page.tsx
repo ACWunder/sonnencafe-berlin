@@ -1,7 +1,7 @@
 // src/app/page.tsx
 "use client";
 
-import { useState, useEffect, useMemo, useRef, useCallback, useDeferredValue } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, useDeferredValue, useTransition } from "react";
 import { format } from "date-fns";
 import { Sun, Search, MapPin, X, ExternalLink, Info, Menu, SlidersHorizontal } from "lucide-react";
 import type { Cafe, TimeState, SunTimeline, SunTimelineData } from "@/types";
@@ -94,8 +94,13 @@ export default function Home() {
   const cardDragStartY = useRef(0);
 
   // ── District filter ──────────────────────────────────────────────────────────
-  const [selectedDistricts, setSelectedDistricts] = useState<Set<string> | null>(null); // null = all
   const [showFilter, setShowFilter] = useState(false);
+
+  // visualDistricts: updates instantly → drives checkbox appearance only
+  // filterDistricts: updates in a transition → drives sidebar + map (non-blocking)
+  const [visualDistricts, setVisualDistricts] = useState<Set<string> | null>(null);
+  const [filterDistricts, setFilterDistricts] = useState<Set<string> | null>(null);
+  const [, startFilterTransition] = useTransition();
 
   const allDistricts = useMemo(() => {
     const set = new Set(cafes.map((c) => c.district ?? "Wien"));
@@ -107,20 +112,29 @@ export default function Home() {
   }, [cafes]);
 
   const districtFilteredCafes = useMemo(() => {
-    if (!selectedDistricts) return cafes;
-    return cafes.filter((c) => selectedDistricts.has(c.district ?? "Wien"));
-  }, [cafes, selectedDistricts]);
+    if (!filterDistricts) return cafes;
+    return cafes.filter((c) => filterDistricts.has(c.district ?? "Wien"));
+  }, [cafes, filterDistricts]);
 
   const toggleDistrict = useCallback((d: string) => {
-    setSelectedDistricts((prev) => {
+    const computeNext = (prev: Set<string> | null) => {
       const current = prev ?? new Set(allDistricts);
       const next = new Set(current);
       if (next.has(d)) next.delete(d); else next.add(d);
       return next.size === allDistricts.length ? null : next;
-    });
+    };
+    // Instant: checkbox flips immediately
+    setVisualDistricts((prev) => computeNext(prev));
+    // Non-blocking: sidebar + map update without blocking the UI
+    startFilterTransition(() => setFilterDistricts((prev) => computeNext(prev)));
   }, [allDistricts]);
 
-  const filterActive = selectedDistricts !== null && selectedDistricts.size < allDistricts.length;
+  const resetFilter = useCallback(() => {
+    setVisualDistricts(null);
+    startFilterTransition(() => setFilterDistricts(null));
+  }, []);
+
+  const filterActive = visualDistricts !== null && visualDistricts.size < allDistricts.length;
 
   const deferredCafesForMap = useDeferredValue(districtFilteredCafes);
 
@@ -518,7 +532,7 @@ export default function Home() {
                 <div className="flex items-center justify-between px-3.5 pt-3 pb-2">
                   <span className="text-[10px] font-body font-bold uppercase tracking-widest text-zinc-400">Bezirke</span>
                   <button
-                    onClick={() => { setSelectedDistricts(null); setShowFilter(false); }}
+                    onClick={() => { resetFilter(); setShowFilter(false); }}
                     className="text-[11px] font-body font-semibold text-amber-500 active:opacity-70"
                   >
                     Alle
@@ -526,7 +540,7 @@ export default function Home() {
                 </div>
                 <div className="pb-2">
                   {allDistricts.map((d) => {
-                    const checked = selectedDistricts ? selectedDistricts.has(d) : true;
+                    const checked = visualDistricts ? visualDistricts.has(d) : true;
                     return (
                       <label
                         key={d}
