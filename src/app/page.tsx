@@ -345,7 +345,7 @@ export default function Home() {
             </div>
             <div className="space-y-2 text-[13px] font-body text-zinc-600">
               <p className="text-zinc-600 text-[13px] leading-relaxed">
-                Mit dieser App kannst du entdecken, welche Cafés in Wien jetzt oder zu einem späteren Zeitpunkt in der Sonne liegen. Viel Spaß :)
+                Mit dieser App kannst du sehen, welche Cafés in Wien jetzt oder zu einem späteren Zeitpunkt in der Sonne liegen. Viel Spaß :)
               </p>
               <div className="pt-2 border-t border-zinc-50">
                 <p className="text-[11px] text-zinc-400 mb-1 uppercase tracking-wide font-medium">Kontakt</p>
