@@ -12,7 +12,7 @@ export function LoadingState({ fullscreen }: LoadingStateProps) {
         <span className="absolute inset-0 flex items-center justify-center text-lg">☀️</span>
       </div>
       <p className="text-sm text-stone-400 font-body animate-pulse-soft">
-        Lade Cafés aus Wien...
+        Lade Cafés aus Berlin...
       </p>
     </div>
   );

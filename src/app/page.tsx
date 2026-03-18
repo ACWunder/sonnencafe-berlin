@@ -174,7 +174,7 @@ export default function Home() {
   const [, startFilterTransition] = useTransition();
 
   const allDistricts = useMemo(() => {
-    const set = new Set(cafes.map((c) => c.district ?? "Wien"));
+    const set = new Set(cafes.map((c) => c.district ?? "Berlin"));
     return Array.from(set).sort((a, b) => {
       const na = parseInt(a) || 99;
       const nb = parseInt(b) || 99;
@@ -184,7 +184,7 @@ export default function Home() {
 
   const districtFilteredCafes = useMemo(() => {
     if (!filterDistricts) return cafes;
-    return cafes.filter((c) => filterDistricts.has(c.district ?? "Wien"));
+    return cafes.filter((c) => filterDistricts.has(c.district ?? "Berlin"));
   }, [cafes, filterDistricts]);
 
   const toggleDistrict = useCallback((d: string) => {
@@ -350,7 +350,7 @@ export default function Home() {
             <Sun className="w-4 h-4 text-white" strokeWidth={2.5} />
           </div>
           <h1 className="font-display font-bold text-zinc-900 text-[13px] leading-none tracking-tight whitespace-nowrap">
-            Sonnencafe Wien
+            Sonnencafe Berlin
           </h1>
         </div>
 
@@ -417,7 +417,7 @@ export default function Home() {
             </div>
             <div className="space-y-2 text-[13px] font-body text-zinc-600">
               <p className="text-zinc-600 text-[13px] leading-relaxed">
-                Mit dieser App kannst du sehen, welche Cafés in Wien jetzt oder zu einem späteren Zeitpunkt in der Sonne liegen. Viel Spaß :)
+                Mit dieser App kannst du sehen, welche Cafés in Berlin jetzt oder zu einem späteren Zeitpunkt in der Sonne liegen. Viel Spaß :)
               </p>
               <div className="pt-2 border-t border-zinc-50">
                 <p className="text-[11px] text-zinc-400 mb-1 uppercase tracking-wide font-medium">Kontakt</p>
@@ -469,7 +469,7 @@ export default function Home() {
                 <div className="w-6 h-6 rounded-[7px] bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
                   <Sun className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
                 </div>
-                <span className="font-display font-bold text-zinc-900 text-[13px]">Sonnencafe Wien</span>
+                <span className="font-display font-bold text-zinc-900 text-[13px]">Sonnencafe Berlin</span>
               </div>
               <button
                 onClick={() => setSidebarOpen(false)}
@@ -770,7 +770,7 @@ function SelectedCafeCard({
   const isSunny = mins !== null && mins !== undefined;
   const openStatus = isOpenNow(cafe.tags?.opening_hours, currentDate);
   const mapsQuery = cafe.address
-    ? [cafe.name, cafe.address, "Wien"].join(", ")
+    ? [cafe.name, cafe.address, "Berlin"].join(", ")
     : cafe.name;
   const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(mapsQuery)}/@${cafe.lat},${cafe.lng},19z`;
 

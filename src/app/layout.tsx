@@ -13,13 +13,13 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Sonnencafe Wien – Sonnige Cafés entdecken",
+  title: "Sonnencafe Berlin – Sonnige Cafés entdecken",
   description:
-    "Welches Café in Wien liegt gerade in der Sonne? Sonnencafe zeigt dir in Echtzeit, wo du jetzt einen sonnigen Platz findest – für jeden Tag und jede Uhrzeit.",
-  keywords: ["Wien", "Café", "Sonne", "Sonnig", "Schanigarten", "Vienna", "Kaffee", "Terrasse"],
-  authors: [{ name: "Sonnencafe Wien" }],
-  creator: "Sonnencafe Wien",
-  applicationName: "Sonnencafe Wien",
+    "Welches Café in Berlin liegt gerade in der Sonne? Sonnencafe zeigt dir in Echtzeit, wo du jetzt einen sonnigen Platz findest – für jeden Tag und jede Uhrzeit.",
+  keywords: ["Berlin", "Café", "Sonne", "Sonnig", "Außengastronomie", "Kaffee", "Terrasse"],
+  authors: [{ name: "Sonnencafe Berlin" }],
+  creator: "Sonnencafe Berlin",
+  applicationName: "Sonnencafe Berlin",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -29,16 +29,16 @@ export const metadata: Metadata = {
     telephone: false,
   },
   openGraph: {
-    title: "Sonnencafe Wien – Sonnige Cafés entdecken",
-    description: "Welches Café in Wien liegt gerade in der Sonne? Echtzeit-Schattenberechnung für Wien.",
+    title: "Sonnencafe Berlin – Sonnige Cafés entdecken",
+    description: "Welches Café in Berlin liegt gerade in der Sonne? Echtzeit-Schattenberechnung für Berlin.",
     type: "website",
-    locale: "de_AT",
-    siteName: "Sonnencafe Wien",
+    locale: "de_DE",
+    siteName: "Sonnencafe Berlin",
   },
   twitter: {
     card: "summary",
-    title: "Sonnencafe Wien",
-    description: "Welches Café in Wien liegt gerade in der Sonne?",
+    title: "Sonnencafe Berlin",
+    description: "Welches Café in Berlin liegt gerade in der Sonne?",
   },
 };
 

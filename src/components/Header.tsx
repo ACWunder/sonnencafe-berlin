@@ -30,7 +30,7 @@ export function Header({
           <h1 className="font-display font-bold text-stone-900 text-base leading-tight">
             SonnenCafé
           </h1>
-          <p className="text-xs text-stone-400 font-body leading-tight">Wien</p>
+          <p className="text-xs text-stone-400 font-body leading-tight">Berlin</p>
         </div>
       </div>
 

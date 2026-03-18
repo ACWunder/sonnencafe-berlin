@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Sonnencafe Wien",
+    name: "Sonnencafe Berlin",
     short_name: "Sonnencafé",
-    description: "Finde sonnige Cafés in Wien – jetzt und zu jeder Uhrzeit",
+    description: "Finde sonnige Cafés in Berlin – jetzt und zu jeder Uhrzeit",
     start_url: "/",
     display: "standalone",
     background_color: "#fafaf9",
