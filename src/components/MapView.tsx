@@ -712,7 +712,7 @@ export function MapView({
             { enableHighAccuracy: true, timeout: 8000 },
           );
         }}
-        className="absolute top-14 left-3 z-[500] w-9 h-9 bg-white/90 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-lg shadow-zinc-200/40 flex items-center justify-center active:scale-95 transition-all"
+        className="absolute top-[6.25rem] left-3 z-[500] w-9 h-9 bg-white/90 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-lg shadow-zinc-200/40 flex items-center justify-center active:scale-95 transition-all"
         title="Meinen Standort anzeigen"
       >
         {locating ? (

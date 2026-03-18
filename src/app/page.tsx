@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { format } from "date-fns";
-import { Sun, Search, MapPin, X, ExternalLink, Info, Menu } from "lucide-react";
+import { Sun, Search, MapPin, X, ExternalLink, Info, Menu, SlidersHorizontal } from "lucide-react";
 import type { Cafe, TimeState, SunTimeline, SunTimelineData } from "@/types";
 import { MapView } from "@/components/MapView";
 import { InstallBanner } from "@/components/InstallBanner";
@@ -93,6 +93,35 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const cardDragStartY = useRef(0);
 
+  // ── District filter ──────────────────────────────────────────────────────────
+  const [selectedDistricts, setSelectedDistricts] = useState<Set<string> | null>(null); // null = all
+  const [showFilter, setShowFilter] = useState(false);
+
+  const allDistricts = useMemo(() => {
+    const set = new Set(cafes.map((c) => c.district ?? "Wien"));
+    return Array.from(set).sort((a, b) => {
+      const na = parseInt(a) || 99;
+      const nb = parseInt(b) || 99;
+      return na - nb;
+    });
+  }, [cafes]);
+
+  const districtFilteredCafes = useMemo(() => {
+    if (!selectedDistricts) return cafes;
+    return cafes.filter((c) => selectedDistricts.has(c.district ?? "Wien"));
+  }, [cafes, selectedDistricts]);
+
+  const toggleDistrict = useCallback((d: string) => {
+    setSelectedDistricts((prev) => {
+      const current = prev ?? new Set(allDistricts);
+      const next = new Set(current);
+      if (next.has(d)) next.delete(d); else next.add(d);
+      return next.size === allDistricts.length ? null : next;
+    });
+  }, [allDistricts]);
+
+  const filterActive = selectedDistricts !== null && selectedDistricts.size < allDistricts.length;
+
   const handleSunRemaining = useCallback((data: Record<string, number | null>) => {
     setSunRemaining(data);
   }, []);
@@ -136,11 +165,11 @@ export default function Home() {
   const filtered = useMemo(() => {
     const q = search.trim();
     if (!q) {
-      return [...cafes].sort((a, b) => (sunRemaining[b.id] ?? -1) - (sunRemaining[a.id] ?? -1));
+      return [...districtFilteredCafes].sort((a, b) => (sunRemaining[b.id] ?? -1) - (sunRemaining[a.id] ?? -1));
     }
 
     // Score every cafe; keep those with any match
-    const scored = cafes
+    const scored = districtFilteredCafes
       .map((c) => ({ cafe: c, score: fuzzyScore(q, c) }))
       .filter(({ score }) => score > 0);
 
@@ -152,7 +181,7 @@ export default function Home() {
     );
 
     return scored.map(({ cafe }) => cafe);
-  }, [cafes, search, sunRemaining]);
+  }, [districtFilteredCafes, search, sunRemaining]);
 
   const currentMinute = (() => {
     const [h, m] = timeState.time.split(":").map(Number);
@@ -450,7 +479,7 @@ export default function Home() {
         <main className="flex-1 relative overflow-hidden">
           <MapView
             timeState={timeState}
-            cafes={cafes}
+            cafes={districtFilteredCafes}
             selectedCafe={selectedCafe}
             onCafeSelect={setSelectedCafe}
             onSunRemaining={handleSunRemaining}
@@ -464,6 +493,61 @@ export default function Home() {
           >
             <Menu className="w-4 h-4" />
           </button>
+
+          {/* Filter button */}
+          <button
+            onClick={() => setShowFilter((v) => !v)}
+            className={`absolute top-14 left-3 z-[500] w-9 h-9 backdrop-blur-xl rounded-2xl border shadow-lg shadow-zinc-200/40 flex items-center justify-center active:scale-95 transition-all ${
+              filterActive
+                ? "bg-amber-400 border-amber-300 text-white"
+                : "bg-white/90 border-zinc-100 text-zinc-500"
+            }`}
+            title="Bezirke filtern"
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+          </button>
+
+          {/* Filter panel */}
+          {showFilter && (
+            <>
+              {/* backdrop to close on outside click */}
+              <div className="absolute inset-0 z-[501]" onClick={() => setShowFilter(false)} />
+              <div className="absolute top-[6.25rem] left-3 z-[502] w-52 bg-white/95 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-xl shadow-zinc-200/50 overflow-hidden">
+                <div className="flex items-center justify-between px-3.5 pt-3 pb-2">
+                  <span className="text-[10px] font-body font-bold uppercase tracking-widest text-zinc-400">Bezirke</span>
+                  <button
+                    onClick={() => { setSelectedDistricts(null); setShowFilter(false); }}
+                    className="text-[11px] font-body font-semibold text-amber-500 active:opacity-70"
+                  >
+                    Alle
+                  </button>
+                </div>
+                <div className="pb-2">
+                  {allDistricts.map((d) => {
+                    const checked = selectedDistricts ? selectedDistricts.has(d) : true;
+                    return (
+                      <label
+                        key={d}
+                        onClick={() => toggleDistrict(d)}
+                        className="flex items-center gap-2.5 px-3.5 py-2 cursor-pointer hover:bg-zinc-50 active:bg-zinc-100 transition-colors"
+                      >
+                        <span className={`w-4 h-4 rounded-[5px] border flex items-center justify-center shrink-0 transition-colors ${
+                          checked ? "bg-amber-400 border-amber-400" : "bg-white border-zinc-200"
+                        }`}>
+                          {checked && (
+                            <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
+                              <path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          )}
+                        </span>
+                        <span className="text-[13px] font-body text-zinc-700">{d}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Mobile: floating cafe card — fixed, right-aligned, same bottom as legend */}
           {selectedCafe && (
