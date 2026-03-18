@@ -823,8 +823,8 @@ function SelectedCafeCard({
             </h2>
             {openStatus !== null && (
               <span
-                className={`text-[8px] font-body font-semibold shrink-0 leading-none self-end mb-[1px] ${openStatus ? "" : "text-red-400"}`}
-                style={openStatus ? { color: "#66cd00" } : undefined}
+                className={`text-[8px] font-body font-semibold shrink-0 leading-none ${openStatus ? "" : "text-red-400"}`}
+                style={openStatus ? { color: "#00cd00" } : undefined}
               >
                 {openStatus ? "geöffnet" : "geschlossen"}
               </span>
