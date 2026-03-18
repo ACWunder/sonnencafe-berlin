@@ -312,7 +312,7 @@ export default function Home() {
         </button>
 
         <button
-          onClick={() => setShowImpressum(true)}
+          onClick={() => { setShowImpressum(true); setSelectedCafe(null); }}
           className="ml-auto text-zinc-300 hover:text-zinc-500 transition-colors p-1 shrink-0"
           title="Impressum"
         >
@@ -331,19 +331,21 @@ export default function Home() {
             className="relative bg-white rounded-2xl shadow-2xl shadow-zinc-300/50 border border-zinc-100 p-6 max-w-xs w-full cafe-card-enter"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-4">
+            {/* iOS-style close button */}
+            <button
+              onClick={() => setShowImpressum(false)}
+              className="absolute top-1 right-1 z-10 w-[52px] h-[52px] flex items-center justify-center active:scale-90 transition-transform duration-100"
+            >
+              <span className="w-[32px] h-[32px] rounded-full bg-zinc-900/[0.07] flex items-center justify-center">
+                <X className="w-[15px] h-[15px] text-zinc-500" strokeWidth={2.5} />
+              </span>
+            </button>
+            <div className="mb-4 pr-10">
               <h2 className="font-display font-bold text-zinc-900 text-[15px]">Impressum</h2>
-              <button
-                onClick={() => setShowImpressum(false)}
-                className="w-6 h-6 rounded-full bg-zinc-100 hover:bg-zinc-200 flex items-center justify-center text-zinc-400 transition-colors"
-              >
-                <X className="w-3 h-3" />
-              </button>
             </div>
             <div className="space-y-2 text-[13px] font-body text-zinc-600">
-              <p className="font-semibold text-zinc-900">Sonnencafe Wien</p>
-              <p className="text-zinc-400 text-[12px] leading-relaxed">
-                Ein privates Projekt zur Visualisierung von Sonnenstunden an Wiener Cafés.
+              <p className="text-zinc-600 text-[13px] leading-relaxed">
+                Mit dieser App kannst du entdecken, welche Cafés in Wien jetzt oder zu einem späteren Zeitpunkt in der Sonne liegen. Viel Spaß :)
               </p>
               <div className="pt-2 border-t border-zinc-50">
                 <p className="text-[11px] text-zinc-400 mb-1 uppercase tracking-wide font-medium">Kontakt</p>
@@ -575,7 +577,7 @@ export default function Home() {
           {/* Filter button */}
           <button
             ref={filterButtonRef}
-            onClick={() => setShowFilter((v) => !v)}
+            onClick={() => { setShowFilter((v) => !v); setSelectedCafe(null); }}
             className={`absolute top-14 left-3 z-[500] w-9 h-9 backdrop-blur-xl rounded-2xl border shadow-lg shadow-zinc-200/40 flex items-center justify-center active:scale-95 transition-all ${
               filterActive
                 ? "bg-amber-400 border-amber-300 text-white"
@@ -589,33 +591,22 @@ export default function Home() {
           {/* Filter panel */}
           {showFilter && (
             <div ref={filterPanelRef} className="absolute top-[6.25rem] left-3 z-[502] w-52 bg-white/95 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-xl shadow-zinc-200/50 overflow-hidden">
-                <div className="flex items-center justify-between pl-3.5 pr-1 pt-1 pb-2">
-                  <div className="flex items-center gap-3">
-                    <span className="text-[10px] font-body font-bold uppercase tracking-widest text-zinc-400">Bezirke</span>
-                    <button
-                      onClick={() => {
-                        const allChecked = !visualDistricts || visualDistricts.size === allDistricts.length;
-                        if (allChecked) {
-                          const empty = new Set<string>();
-                          setVisualDistricts(empty);
-                          startFilterTransition(() => setFilterDistricts(empty));
-                        } else {
-                          resetFilter();
-                        }
-                      }}
-                      className="text-[11px] font-body font-semibold text-amber-500 active:opacity-70"
-                    >
-                      {!visualDistricts || visualDistricts.size === allDistricts.length ? "Keine" : "Alle"}
-                    </button>
-                  </div>
-                  {/* iOS-style close button */}
+                <div className="flex items-center justify-between pl-3.5 pr-3.5 pt-2.5 pb-2">
+                  <span className="text-[10px] font-body font-bold uppercase tracking-widest text-zinc-400">Bezirke</span>
                   <button
-                    onClick={() => setShowFilter(false)}
-                    className="w-[44px] h-[44px] rounded-full flex items-center justify-center active:scale-90 transition-transform duration-100"
+                    onClick={() => {
+                      const allChecked = !visualDistricts || visualDistricts.size === allDistricts.length;
+                      if (allChecked) {
+                        const empty = new Set<string>();
+                        setVisualDistricts(empty);
+                        startFilterTransition(() => setFilterDistricts(empty));
+                      } else {
+                        resetFilter();
+                      }
+                    }}
+                    className="text-[11px] font-body font-semibold text-amber-500 active:opacity-70"
                   >
-                    <span className="w-[28px] h-[28px] rounded-full bg-zinc-900/[0.07] flex items-center justify-center">
-                      <X className="w-[14px] h-[14px] text-zinc-500" strokeWidth={2.5} />
-                    </span>
+                    {!visualDistricts || visualDistricts.size === allDistricts.length ? "Keine" : "Alle"}
                   </button>
                 </div>
                 <div className="pb-2">
