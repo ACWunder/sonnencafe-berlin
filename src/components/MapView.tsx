@@ -387,7 +387,6 @@ export function MapView({
   timeStateRef.current    = timeState;
 
   const [fetching,  setFetching]  = useState(false);
-  const [locating,  setLocating]  = useState(false);
 
   // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -1044,63 +1043,51 @@ export function MapView({
         </div>
       )}
 
-      {/* Locate button */}
-      <button
-        onClick={() => {
-          if (!mapInstanceRef.current) return;
-          setLocating(true);
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              setLocating(false);
-              import("maplibre-gl").then((maplibregl) => {
-                const map = mapInstanceRef.current;
-                if (!map) return;
-                const { latitude: lat, longitude: lng } = pos.coords;
+      {/* Sunrise/sunset — top right */}
+      <SunInfoOverlay timeState={timeState} />
 
-                locationMarkerRef.current?.remove();
-
-                const el = document.createElement("div");
-                el.style.cssText = [
-                  "width:18px;height:18px;border-radius:50%;",
-                  "background:#3b82f6;border:2.5px solid white;",
-                  "box-shadow:0 0 0 4px rgba(59,130,246,0.25);",
-                  "animation:locationPulse 2s ease-in-out infinite;",
-                ].join("");
-
-                locationMarkerRef.current = new maplibregl.Marker({ element: el })
-                  .setLngLat([lng, lat])
-                  .addTo(map);
-
-                map.easeTo({ center: [lng, lat], duration: 600 });
-              });
-            },
-            () => setLocating(false),
-            { enableHighAccuracy: true, timeout: 8000 },
-          );
-        }}
-        className="absolute top-[6.25rem] left-3 z-[500] w-9 h-9 bg-white/90 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-lg shadow-zinc-200/40 flex items-center justify-center active:scale-95 transition-all"
-        title="Meinen Standort anzeigen"
-      >
-        {locating ? (
-          <div className="w-4 h-4 border-[1.5px] border-blue-400 border-t-transparent rounded-full animate-spin" />
-        ) : (
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
-            <circle cx="12" cy="12" r="8" strokeOpacity="0.3" />
+      {/* Locate button + compass stacked — bottom right */}
+      <div className="absolute z-[500] flex flex-col gap-3 items-end" style={{ bottom: "24px", right: "16px" }}>
+        <button
+          onClick={() => {
+            if (!mapInstanceRef.current) return;
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                import("maplibre-gl").then((maplibregl) => {
+                  const map = mapInstanceRef.current;
+                  if (!map) return;
+                  const { latitude: lat, longitude: lng } = pos.coords;
+                  locationMarkerRef.current?.remove();
+                  const el = document.createElement("div");
+                  el.style.cssText = [
+                    "width:18px;height:18px;border-radius:50%;",
+                    "background:#3b82f6;border:2.5px solid white;",
+                    "box-shadow:0 0 0 4px rgba(59,130,246,0.25);",
+                    "animation:locationPulse 2s ease-in-out infinite;",
+                  ].join("");
+                  locationMarkerRef.current = new maplibregl.Marker({ element: el })
+                    .setLngLat([lng, lat])
+                    .addTo(map);
+                  map.easeTo({ center: [lng, lat], duration: 600 });
+                });
+              },
+              () => {},
+              { enableHighAccuracy: true, timeout: 8000 },
+            );
+          }}
+          className="w-[56px] h-[56px] bg-white rounded-full shadow-xl shadow-zinc-300/40 border border-zinc-100 flex items-center justify-center"
+          style={{ marginRight: "5px" }}
+          title="Meinen Standort anzeigen"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24">
+            <path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z" fill="#4285f4"/>
           </svg>
-        )}
-      </button>
-
-      {/* Legend + compass stacked bottom-left */}
-      <div className="absolute z-[500] flex flex-col gap-2 items-start" style={{ bottom: "24px", left: "12px" }}>
+        </button>
         <SunCompass
           timeState={timeState}
           onNorth={() => mapInstanceRef.current?.easeTo({ bearing: 0, duration: 600 })}
         />
-        <Legend />
       </div>
-      <SunInfoOverlay timeState={timeState} />
     </div>
   );
 }
@@ -1138,9 +1125,9 @@ function SunCompass({ timeState, onNorth }: { timeState: TimeState; onNorth?: ()
   const pos  = getSunPosition(BERLIN_CENTER[0], BERLIN_CENTER[1], date);
   const isUp = pos.altitudeDeg > 0;
 
-  const size         = 52;
+  const size         = 76;
   const r            = size / 2;
-  const pad          = 10;
+  const pad          = 13;
   const innerR       = r - pad;
   const distFraction = isUp ? Math.max(0, 1 - pos.altitudeDeg / 90) : 1.0;
   const azRad        = (pos.azimuthDeg * Math.PI) / 180;

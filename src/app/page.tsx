@@ -482,17 +482,16 @@ export default function Home() {
       )}
 
       {/* ── Mobile slide-in sidebar ── */}
-      {sidebarOpen && (
-        <div className="md:hidden fixed inset-0 z-[9998] flex">
+        <div className={`md:hidden fixed inset-0 z-[9998] flex ${sidebarOpen ? "pointer-events-auto" : "pointer-events-none"}`}>
           {/* Backdrop */}
           <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            className={`absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${sidebarOpen ? "opacity-100" : "opacity-0"}`}
             onTouchEnd={(e) => { e.preventDefault(); setSidebarOpen(false); }}
             onClick={() => setSidebarOpen(false)}
           />
           {/* Panel */}
           <div
-            className="relative flex flex-col bg-white h-full shadow-2xl"
+            className={`relative flex flex-col bg-white h-full shadow-2xl transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
             style={{ width: "min(85vw, 340px)" }}
           >
             {/* Panel header */}
@@ -580,7 +579,6 @@ export default function Home() {
             </ul>
           </div>
         </div>
-      )}
 
       {/* ── Single layout: sidebar (desktop) + map + bottom sheet (mobile) ── */}
       <div className="flex flex-1 overflow-hidden">
@@ -674,27 +672,27 @@ export default function Home() {
             activeDistrict={activeDistrict}
           />
 
-          {/* Hamburger — floating below app icon, mobile only */}
+          {/* Hamburger — floating, mobile only */}
           <button
             onClick={() => { setSidebarOpen(true); setSelectedCafe(null); }}
-            className="md:hidden absolute top-3 left-3 z-[500] w-9 h-9 bg-white/90 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-lg shadow-zinc-200/40 flex items-center justify-center text-zinc-500 active:scale-95 transition-all"
+            className="md:hidden absolute top-3 left-3 z-[500] w-[56px] h-[56px] bg-white/90 backdrop-blur-xl rounded-full border border-zinc-100 shadow-lg shadow-zinc-200/40 flex items-center justify-center text-zinc-500"
           >
-            <Menu className="w-4 h-4" />
+            <Menu className="w-5 h-5" />
           </button>
 
           {/* Filter button */}
           <button
             ref={filterButtonRef}
             onClick={() => { setShowFilter((v) => !v); setSelectedCafe(null); }}
-            className="absolute top-14 left-3 z-[500] w-9 h-9 bg-amber-400 border border-amber-300 text-white backdrop-blur-xl rounded-2xl shadow-lg shadow-zinc-200/40 flex items-center justify-center active:scale-95 transition-all"
+            className="absolute top-20 left-3 z-[500] w-[56px] h-[56px] bg-amber-400 border border-amber-300 text-white backdrop-blur-xl rounded-full shadow-lg shadow-zinc-200/40 flex items-center justify-center"
             title="Bezirk wählen"
           >
-            <SlidersHorizontal className="w-4 h-4" />
+            <SlidersHorizontal className="w-5 h-5" />
           </button>
 
           {/* Filter panel — single-select */}
           {showFilter && (
-            <div ref={filterPanelRef} className="absolute top-[6.25rem] left-3 z-[502] w-52 bg-white/95 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-xl shadow-zinc-200/50 overflow-hidden">
+            <div ref={filterPanelRef} className="absolute top-36 left-3 z-[502] w-52 bg-white/95 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-xl shadow-zinc-200/50 overflow-hidden">
                 <div className="pl-3.5 pr-3.5 pt-2.5 pb-2">
                   <span className="text-[10px] font-body font-bold uppercase tracking-widest text-zinc-400">Bezirk</span>
                 </div>
