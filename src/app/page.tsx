@@ -307,7 +307,11 @@ export default function Home() {
         : (sunRemaining[b.cafe.id] ?? -1) - (sunRemaining[a.cafe.id] ?? -1)
     );
 
-    return scored.map(({ cafe }) => cafe);
+    // If there are real substring/word matches (≥60), drop the fuzzy-only
+    // results (score 40) so exact matches aren't buried in unrelated hits.
+    const hasGoodMatch = scored.some(({ score }) => score >= 60);
+    return (hasGoodMatch ? scored.filter(({ score }) => score >= 60) : scored)
+      .map(({ cafe }) => cafe);
   }, [allCafes, districtFilteredCafes, search, sunRemaining]);
 
   // Selecting a café from another district automatically switches to it
