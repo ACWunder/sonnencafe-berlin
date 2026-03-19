@@ -855,7 +855,7 @@ function SelectedCafeCard({
         {/* Close button — flex sibling so text area is bounded, never overlaps */}
         <button
           onClick={handleClose}
-          className="shrink-0 w-[44px] h-[44px] flex items-start justify-center pt-3 active:scale-90 transition-transform duration-100"
+          className="shrink-0 w-[44px] h-[44px] flex items-center justify-center active:scale-90 transition-transform duration-100"
         >
           <span className="w-[28px] h-[28px] rounded-full bg-zinc-900/[0.07] flex items-center justify-center">
             <X className="w-[14px] h-[14px] text-zinc-500" strokeWidth={2.5} />
