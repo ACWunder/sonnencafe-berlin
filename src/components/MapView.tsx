@@ -156,6 +156,7 @@ interface MapViewProps {
   onCafeSelect: (cafe: Cafe | null) => void;
   onSunRemaining: (data: Record<string, number | null>) => void;
   onSunTimeline: (data: SunTimelineData) => void;
+  onSunDataSettled?: () => void;
   activeDistrict: string;
 }
 
@@ -345,7 +346,7 @@ function loadSunEmoji(map: any, onReady: () => void) {
 
 export function MapView({
   timeState, cafes, visibleCafeIds, sunRemaining, selectedCafe, onCafeSelect, onSunRemaining, onSunTimeline,
-  activeDistrict,
+  onSunDataSettled, activeDistrict,
 }: MapViewProps) {
   const mapRef         = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -355,6 +356,9 @@ export function MapView({
   const shadowCanvasRef    = useRef<HTMLCanvasElement | null>(null);
   const buildingGridRef    = useRef<BuildingGrid | null>(null);
   const shadowWorkerRef    = useRef<Worker | null>(null);
+  const shadowRenderInFlightRef = useRef(false);
+  const pendingShadowTimeRef = useRef<TimeState | null>(null);
+  const sunDataTimeoutRef  = useRef<number | null>(null);
   const buildingCacheRef   = useRef<Map<number, BuildingFeature>>(new Map());
   // Persistent per-district building cache so district switches are instant after first load
   const districtBuildingCacheRef = useRef<Map<string, BuildingFeature[]>>(new Map());
@@ -383,12 +387,44 @@ export function MapView({
   onSunRemainingRef.current = onSunRemaining;
   const onSunTimelineRef  = useRef(onSunTimeline);
   onSunTimelineRef.current = onSunTimeline;
+  const onSunDataSettledRef = useRef(onSunDataSettled);
+  onSunDataSettledRef.current = onSunDataSettled;
   const timeStateRef      = useRef(timeState);
   timeStateRef.current    = timeState;
 
   const [fetching,  setFetching]  = useState(false);
 
   // ── helpers ────────────────────────────────────────────────────────────────
+
+  function clearScheduledSunData() {
+    if (sunDataTimeoutRef.current !== null) {
+      window.clearTimeout(sunDataTimeoutRef.current);
+      sunDataTimeoutRef.current = null;
+    }
+  }
+
+  function scheduleSunDataRefresh(delay = 180) {
+    clearScheduledSunData();
+    sunDataTimeoutRef.current = window.setTimeout(() => {
+      sunDataTimeoutRef.current = null;
+      updateCafesSource(true);
+    }, delay);
+  }
+
+  function dispatchShadowRender(ts: TimeState) {
+    const worker = shadowWorkerRef.current;
+    const canvas = shadowCanvasRef.current;
+    if (!worker || !canvas) return;
+
+    shadowRenderInFlightRef.current = true;
+    worker.postMessage({
+      type: "render",
+      timeState: ts,
+      bounds: currentBoundsRef.current,
+      width: canvas.width,
+      height: canvas.height,
+    });
+  }
 
   // Push updated café GeoJSON to the map source.
   // recomputeSunData = true → also kick off the heavy sun-remaining/timeline
@@ -538,6 +574,7 @@ export function MapView({
             })),
           });
         }
+        onSunDataSettledRef.current?.();
       }
     }
     schedule(processChunk);
@@ -548,25 +585,20 @@ export function MapView({
     const canvas = shadowCanvasRef.current;
     const map    = mapInstanceRef.current;
     if (!canvas || !map || !mapReadyRef.current) return;
-    const bounds = currentBoundsRef.current;
 
     if (shadowWorkerRef.current) {
-      // Offload rendering to worker — result comes back via worker.onmessage
-      shadowWorkerRef.current.postMessage({
-        type: 'render',
-        timeState: ts,
-        bounds,
-        width: canvas.width,
-        height: canvas.height,
-      });
+      pendingShadowTimeRef.current = ts;
+      if (!shadowRenderInFlightRef.current) {
+        const nextTime = pendingShadowTimeRef.current;
+        pendingShadowTimeRef.current = null;
+        if (nextTime) dispatchShadowRender(nextTime);
+      }
       return;
     }
 
     // Fallback: render synchronously on main thread
-    renderShadowCanvas(canvas, allBuildings, ts, bounds);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const source = map.getSource("shadow-source") as any;
-    source?.updateImage({ url: canvas.toDataURL("image/png"), coordinates: shadowCoords(bounds) });
+    renderShadowCanvas(canvas, allBuildings, ts, currentBoundsRef.current);
+    map.triggerRepaint();
   }
 
   // Update café dot colors after pan/zoom. Shadow check uses per-café nearby buildings.
@@ -608,6 +640,10 @@ export function MapView({
           })),
       });
     }
+
+    const shadowSource = map.getSource("shadow-source");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (shadowSource as any)?.setCoordinates?.(shadowCoords(config.bounds));
 
     updateShadowSource(buildings, timeStateRef.current);
     updateCafesSource(true);
@@ -693,9 +729,12 @@ export function MapView({
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(bitmap, 0, 0);
         bitmap.close();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const source = map.getSource('shadow-source') as any;
-        source?.updateImage({ url: canvas.toDataURL('image/png'), coordinates: shadowCoords(currentBoundsRef.current) });
+        map.triggerRepaint();
+
+        shadowRenderInFlightRef.current = false;
+        const nextTime = pendingShadowTimeRef.current;
+        pendingShadowTimeRef.current = null;
+        if (nextTime) dispatchShadowRender(nextTime);
       };
     }
 
@@ -784,8 +823,9 @@ export function MapView({
         // Shadow source: raster image from the offscreen canvas.
         // Image sources avoid WebGL fill-opacity accumulation from overlapping polygons.
         map.addSource("shadow-source", {
-          type: "image",
-          url: shadowCanvas.toDataURL("image/png"), // blank initially
+          type: "canvas",
+          canvas: shadowCanvas,
+          animate: true,
           coordinates: shadowCoords(initBounds),
         });
 
@@ -940,6 +980,9 @@ export function MapView({
     return () => {
       mounted = false;
       mapReadyRef.current = false;
+      clearScheduledSunData();
+      shadowRenderInFlightRef.current = false;
+      pendingShadowTimeRef.current = null;
       shadowWorkerRef.current?.terminate();
       shadowWorkerRef.current = null;
       if (mapInstanceRef.current) {
@@ -959,8 +1002,7 @@ export function MapView({
 
     // Rebuild full visual shadow layer
     updateShadowSource(all, timeState);
-
-    updateCafesSource(true);
+    scheduleSunDataRefresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeState]);
 
@@ -974,9 +1016,19 @@ export function MapView({
   // ── instant dot update when visible set changes (district / restaurant toggle) ─
   useEffect(() => {
     if (!mapInstanceRef.current || !mapReadyRef.current) return;
-    updateCafesSource(true);
+    updateCafesSource(false);
+
+    const rafId = requestAnimationFrame(() => {
+      setTimeout(() => {
+        if (!mapInstanceRef.current || !mapReadyRef.current) return;
+        updateCafesSource(true);
+      }, 120);
+    });
+    return () => cancelAnimationFrame(rafId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleCafeIds]);
+
+  useEffect(() => clearScheduledSunData, []);
 
   // ── redraw dots when selection changes ────────────────────────────────────
   useEffect(() => {

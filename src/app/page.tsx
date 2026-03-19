@@ -8,6 +8,7 @@ import type { Cafe, TimeState, SunTimeline, SunTimelineData } from "@/types";
 import { MapView } from "@/components/MapView";
 import { InstallBanner } from "@/components/InstallBanner";
 import { isRestaurantType } from "@/lib/overpass";
+import { getSunTimes } from "@/lib/sun";
 
 // ─── Opening hours parser (OSM format) ───────────────────────────────────────
 
@@ -174,11 +175,44 @@ function fuzzyScore(query: string, cafe: Cafe): number {
   return 0;
 }
 
+const DISTRICT_SUN_CENTERS: Record<string, [number, number]> = {
+  Mitte: [52.522, 13.398],
+  Kreuzberg: [52.496, 13.411],
+  "Prenzlauer Berg": [52.539, 13.434],
+  Schöneberg: [52.48, 13.356],
+};
+
+function timeToMinute(time: string): number {
+  const [h, m] = time.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function minuteToTime(minute: number): string {
+  const h = Math.floor(minute / 60);
+  const m = minute % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function clampMinute(minute: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, minute));
+}
+
+function formatMinuteLabel(minute: number): string {
+  return new Intl.DateTimeFormat("de-DE", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(2024, 5, 1, Math.floor(minute / 60), minute % 60));
+}
+
 export default function Home() {
   const [timeState, setTimeState] = useState<TimeState>(() => {
     const now = new Date();
     return { date: format(now, "yyyy-MM-dd"), time: format(now, "HH:mm") };
   });
+  const [isCafeSymbolsUpdating, setIsCafeSymbolsUpdating] = useState(false);
+  const [selectedTime, setSelectedTime] = useState<number | null>(null);
+  const [sunriseTime, setSunriseTime] = useState<number | null>(null);
+  const [sunsetTime, setSunsetTime] = useState<number | null>(null);
 
   const [cafes, setCafes] = useState<Cafe[]>([]);
   const [selectedCafe, setSelectedCafe] = useState<Cafe | null>(null);
@@ -200,6 +234,7 @@ export default function Home() {
   const [showFilter, setShowFilter] = useState(false);
   const ALL_DISTRICTS = ["Mitte", "Kreuzberg", "Prenzlauer Berg", "Schöneberg"] as const;
   const [activeDistrict, setActiveDistrict] = useState<string>("Mitte");
+  const sunLocation = DISTRICT_SUN_CENTERS[activeDistrict] ?? DISTRICT_SUN_CENTERS.Mitte;
 
   // ── Restaurant toggle ─────────────────────────────────────────────────────
   const [includeRestaurants, setIncludeRestaurants] = useState(false);
@@ -324,6 +359,29 @@ export default function Home() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    const dayDate = new Date(`${timeState.date}T12:00:00`);
+    const times = getSunTimes(sunLocation[0], sunLocation[1], dayDate);
+    const nextSunrise = times.sunrise.getHours() * 60 + times.sunrise.getMinutes();
+    const nextSunset = times.sunset.getHours() * 60 + times.sunset.getMinutes();
+    const currentMinute = timeToMinute(timeState.time);
+
+    setSunriseTime((prev) => (prev === nextSunrise ? prev : nextSunrise));
+    setSunsetTime((prev) => (prev === nextSunset ? prev : nextSunset));
+    setSelectedTime((prev) => (prev === currentMinute ? prev : currentMinute));
+  }, [activeDistrict, sunLocation, timeState.date, timeState.time]);
+
+  const handleSliderTimeChange = useCallback((minute: number) => {
+    if (sunriseTime === null || sunsetTime === null) return;
+    const nextMinute = clampMinute(minute, sunriseTime, sunsetTime);
+    const nextTime = minuteToTime(nextMinute);
+    setIsCafeSymbolsUpdating(true);
+    setSelectedTime(nextMinute);
+    setTimeState((prev) => (
+      prev.time === nextTime ? prev : { ...prev, time: nextTime }
+    ));
+  }, [sunriseTime, sunsetTime]);
+
   const filtered = useMemo(() => {
     const q = search.trim();
     if (!q) {
@@ -368,6 +426,10 @@ export default function Home() {
     const [h, m] = timeState.time.split(":").map(Number);
     return h * 60 + m;
   })();
+  const hasTimeSlider = sunriseTime !== null && sunsetTime !== null && selectedTime !== null;
+  const sliderMinute = hasTimeSlider
+    ? clampMinute(selectedTime, sunriseTime, sunsetTime)
+    : currentMinute;
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[#f7f6f3]">
@@ -392,7 +454,10 @@ export default function Home() {
         <input
           type="date"
           value={timeState.date}
-          onChange={(e) => setTimeState((s) => ({ ...s, date: e.target.value }))}
+          onChange={(e) => {
+            setIsCafeSymbolsUpdating(true);
+            setTimeState((s) => ({ ...s, date: e.target.value }));
+          }}
           className="text-[11px] font-body text-zinc-600 border border-zinc-200 rounded-[8px] px-2 py-1 bg-zinc-50/80 focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-300 transition-all cursor-pointer min-w-0 shrink"
         />
 
@@ -400,7 +465,10 @@ export default function Home() {
         <input
           type="time"
           value={timeState.time}
-          onChange={(e) => setTimeState((s) => ({ ...s, time: e.target.value }))}
+          onChange={(e) => {
+            setIsCafeSymbolsUpdating(true);
+            setTimeState((s) => ({ ...s, time: e.target.value }));
+          }}
           className="text-[11px] font-body text-zinc-600 border border-zinc-200 rounded-[8px] px-2 py-1 bg-zinc-50/80 focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-300 transition-all cursor-pointer min-w-0 shrink"
         />
 
@@ -408,6 +476,7 @@ export default function Home() {
         <button
           onClick={() => {
             const now = new Date();
+            setIsCafeSymbolsUpdating(true);
             setTimeState({ date: format(now, "yyyy-MM-dd"), time: format(now, "HH:mm") });
           }}
           className="flex items-center gap-1 bg-gradient-to-br from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white font-body font-semibold rounded-[8px] transition-all shadow-sm shadow-amber-200/60 active:scale-95 shrink-0 px-2 py-1"
@@ -669,13 +738,48 @@ export default function Home() {
             onCafeSelect={handleCafeSelect}
             onSunRemaining={handleSunRemaining}
             onSunTimeline={handleSunTimeline}
+            onSunDataSettled={() => setIsCafeSymbolsUpdating(false)}
             activeDistrict={activeDistrict}
           />
+
+          {hasTimeSlider && (
+            <div className="pointer-events-none absolute left-3 right-3 top-4 z-[620] md:top-5">
+              <div className="min-w-0">
+                <div className="rounded-[18px] border border-zinc-100 bg-white/90 px-2.5 py-0.5 shadow-lg shadow-zinc-200/40 backdrop-blur-xl">
+                  <div className="pr-0">
+                    <input
+                      type="range"
+                      min={sunriseTime}
+                      max={sunsetTime}
+                      step={1}
+                      value={sliderMinute}
+                      onChange={(e) => handleSliderTimeChange(Number(e.target.value))}
+                      onInput={(e) => handleSliderTimeChange(Number((e.target as HTMLInputElement).value))}
+                      className="sun-time-slider pointer-events-auto h-8 w-full"
+                      aria-label="Uhrzeit zwischen Sonnenaufgang und Sonnenuntergang"
+                    />
+                  </div>
+                  <div className="-mt-1.5 flex items-center justify-between px-0.5 text-[11px] font-medium text-orange-500/95">
+                    <span>{formatMinuteLabel(sunriseTime)}</span>
+                    <span>{formatMinuteLabel(sunsetTime)}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isCafeSymbolsUpdating && (
+            <div className="pointer-events-none absolute inset-0 z-[650] flex items-center justify-center">
+              <div className="h-12 w-12 animate-spin rounded-full border-[3px] border-amber-200/90 border-t-amber-400" />
+            </div>
+          )}
 
           {/* Hamburger — floating, mobile only */}
           <button
             onClick={() => { setSidebarOpen(true); setSelectedCafe(null); }}
-            className="md:hidden absolute top-3 left-3 z-[500] w-[56px] h-[56px] bg-white/90 backdrop-blur-xl rounded-full border border-zinc-100 shadow-lg shadow-zinc-200/40 flex items-center justify-center text-zinc-500"
+            className={`md:hidden absolute left-3 z-[500] w-[56px] h-[56px] bg-white/90 backdrop-blur-xl rounded-full border border-zinc-100 shadow-lg shadow-zinc-200/40 flex items-center justify-center text-zinc-500 ${
+              hasTimeSlider ? "top-[80px]" : "top-3"
+            }`}
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -684,7 +788,9 @@ export default function Home() {
           <button
             ref={filterButtonRef}
             onClick={() => { setShowFilter((v) => !v); setSelectedCafe(null); }}
-            className={`absolute top-20 left-3 z-[500] w-[56px] h-[56px] backdrop-blur-xl rounded-full shadow-lg shadow-zinc-200/40 flex items-center justify-center ${includeRestaurants ? "bg-amber-400 border border-amber-300 text-white" : "bg-white/90 border border-zinc-100 text-zinc-500"}`}
+            className={`absolute left-3 z-[500] w-[56px] h-[56px] backdrop-blur-xl rounded-full shadow-lg shadow-zinc-200/40 flex items-center justify-center ${
+              hasTimeSlider ? "top-[148px]" : "top-20"
+            } ${includeRestaurants ? "bg-amber-400 border border-amber-300 text-white" : "bg-white/90 border border-zinc-100 text-zinc-500"}`}
             title="Bezirk wählen"
           >
             <SlidersHorizontal className="w-5 h-5" />
@@ -692,7 +798,9 @@ export default function Home() {
 
           {/* Filter panel — single-select */}
           {showFilter && (
-            <div ref={filterPanelRef} className="absolute top-36 left-3 z-[502] w-52 bg-white/95 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-xl shadow-zinc-200/50 overflow-hidden">
+            <div ref={filterPanelRef} className={`absolute left-3 z-[502] w-52 bg-white/95 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-xl shadow-zinc-200/50 overflow-hidden ${
+              hasTimeSlider ? "top-[216px]" : "top-36"
+            }`}>
                 <div className="pl-3.5 pr-3.5 pt-2.5 pb-2">
                   <span className="text-[10px] font-body font-bold uppercase tracking-widest text-zinc-400">Bezirk</span>
                 </div>
@@ -734,7 +842,7 @@ export default function Home() {
           {selectedCafe && (
             <div
               className="md:hidden fixed z-[9999] mobile-cafe-card-enter"
-              style={{ bottom: "12px", right: 0, width: "260px" }}
+              style={{ bottom: "12px", left: "max(0px, calc((100vw - 108px - 260px) / 2))", width: "260px" }}
               onTouchStart={(e) => { cardDragStartY.current = e.touches[0].clientY; }}
               onTouchEnd={(e) => {
                 const dy = e.changedTouches[0].clientY - cardDragStartY.current;
