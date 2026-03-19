@@ -8,6 +8,40 @@ import { getSunPosition, getSunTimes } from "@/lib/sun";
 import { calcShadowPolygon } from "@/lib/buildingShadow";
 import type { BuildingFeature } from "@/app/api/buildings/route";
 
+// ─── spatial grid for fast building lookups ───────────────────────────────────
+// Indexes buildings by grid cell so nearby-building queries are O(1) instead of O(n).
+const GRID_CELL = 0.004; // ~0.004° ≈ 440m per cell; shadow radius is ~200m
+
+class BuildingGrid {
+  private cells = new Map<string, BuildingFeature[]>();
+
+  constructor(buildings: BuildingFeature[]) {
+    for (const b of buildings) {
+      const key = BuildingGrid.key(b.polygon[0][0], b.polygon[0][1]);
+      let cell = this.cells.get(key);
+      if (!cell) { cell = []; this.cells.set(key, cell); }
+      cell.push(b);
+    }
+  }
+
+  private static key(lat: number, lng: number): string {
+    return `${Math.floor(lat / GRID_CELL)},${Math.floor(lng / GRID_CELL)}`;
+  }
+
+  getNearby(lat: number, lng: number): BuildingFeature[] {
+    const result: BuildingFeature[] = [];
+    const row = Math.floor(lat / GRID_CELL);
+    const col = Math.floor(lng / GRID_CELL);
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        const bs = this.cells.get(`${row + dr},${col + dc}`);
+        if (bs) result.push(...bs);
+      }
+    }
+    return result;
+  }
+}
+
 // ─── constants ────────────────────────────────────────────────────────────────
 
 // Full Berlin area (used for map bounds / fallback)
@@ -269,6 +303,8 @@ export function MapView({
   const mapReadyRef    = useRef(false);  // true once map 'load' event fired
 
   const shadowCanvasRef    = useRef<HTMLCanvasElement | null>(null);
+  const buildingGridRef    = useRef<BuildingGrid | null>(null);
+  const shadowWorkerRef    = useRef<Worker | null>(null);
   const buildingCacheRef   = useRef<Map<number, BuildingFeature>>(new Map());
   // Persistent per-district building cache so district switches are instant after first load
   const districtBuildingCacheRef = useRef<Map<string, BuildingFeature[]>>(new Map());
@@ -350,10 +386,12 @@ export function MapView({
       } else {
         const LAT_MAX = 200 / 111_000;
         const LNG_MAX = 200 / (111_000 * Math.cos((cafe.lat * Math.PI) / 180));
-        const nearby = allBuildings.filter((b) => {
-          const [bLat, bLng] = b.polygon[0];
-          return Math.abs(bLat - cafe.lat) < LAT_MAX && Math.abs(bLng - cafe.lng) < LNG_MAX;
-        });
+        const nearby = buildingGridRef.current
+          ? buildingGridRef.current.getNearby(cafe.lat, cafe.lng)
+          : allBuildings.filter((b) => {
+              const [bLat, bLng] = b.polygon[0];
+              return Math.abs(bLat - cafe.lat) < LAT_MAX && Math.abs(bLng - cafe.lng) < LNG_MAX;
+            });
         inShadow = nearby.some((b) => {
           const poly = calcShadowPolygon(b.polygon, b.height ?? FALLBACK_HEIGHT, sunPos.altitudeDeg, sunPos.azimuthDeg);
           return poly.length >= 3 && pointInPolygon(chkLat, chkLng, poly);
@@ -410,8 +448,9 @@ export function MapView({
       const end = Math.min(idx + CHUNK, allCafes.length);
       for (; idx < end; idx++) {
         const cafe = allCafes[idx];
-        remaining[cafe.id] = calcSunRemaining(cafe, currentDate, buildings);
-        timelines[cafe.id] = calcDayTimeline(cafe, dayDate, buildings);
+        const nearbyForCafe = buildingGridRef.current?.getNearby(cafe.lat, cafe.lng) ?? buildings;
+        remaining[cafe.id] = calcSunRemaining(cafe, currentDate, nearbyForCafe);
+        timelines[cafe.id] = calcDayTimeline(cafe, dayDate, nearbyForCafe);
       }
       if (idx < allCafes.length) {
         schedule(processChunk);
@@ -447,8 +486,23 @@ export function MapView({
     const map    = mapInstanceRef.current;
     if (!canvas || !map || !mapReadyRef.current) return;
     const bounds = currentBoundsRef.current;
+
+    if (shadowWorkerRef.current) {
+      // Offload rendering to worker — result comes back via worker.onmessage
+      shadowWorkerRef.current.postMessage({
+        type: 'render',
+        timeState: ts,
+        bounds,
+        width: canvas.width,
+        height: canvas.height,
+      });
+      return;
+    }
+
+    // Fallback: render synchronously on main thread
     renderShadowCanvas(canvas, allBuildings, ts, bounds);
-    const source = map.getSource("shadow-source") as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const source = map.getSource("shadow-source") as any;
     source?.updateImage({ url: canvas.toDataURL("image/png"), coordinates: shadowCoords(bounds) });
   }
 
@@ -469,6 +523,10 @@ export function MapView({
 
     buildingCacheRef.current.clear();
     buildings.forEach((b) => buildingCacheRef.current.set(b.id, b));
+    buildingGridRef.current = new BuildingGrid(buildings);
+
+    // Send buildings to shadow worker so it has them ready for render calls
+    shadowWorkerRef.current?.postMessage({ type: 'init', buildings });
 
     const map = mapInstanceRef.current;
     if (!map || !mapReadyRef.current) return;
@@ -551,6 +609,30 @@ export function MapView({
     if (!mapRef.current || mapInstanceRef.current) return;
 
     let mounted = true;
+
+    // Create shadow worker
+    const worker = typeof window !== 'undefined'
+      ? new Worker(new URL('../workers/shadow.worker.ts', import.meta.url))
+      : null;
+    shadowWorkerRef.current = worker;
+
+    if (worker) {
+      worker.onmessage = (e: MessageEvent) => {
+        if (e.data.type !== 'rendered') return;
+        const bitmap: ImageBitmap = e.data.bitmap;
+        const canvas = shadowCanvasRef.current;
+        const map = mapInstanceRef.current;
+        if (!canvas || !map || !mapReadyRef.current) { bitmap.close(); return; }
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { bitmap.close(); return; }
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(bitmap, 0, 0);
+        bitmap.close();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const source = map.getSource('shadow-source') as any;
+        source?.updateImage({ url: canvas.toDataURL('image/png'), coordinates: shadowCoords(currentBoundsRef.current) });
+      };
+    }
 
     import("maplibre-gl").then((maplibregl) => {
       if (!mounted || !mapRef.current || mapInstanceRef.current) return;
@@ -790,6 +872,8 @@ export function MapView({
     return () => {
       mounted = false;
       mapReadyRef.current = false;
+      shadowWorkerRef.current?.terminate();
+      shadowWorkerRef.current = null;
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
