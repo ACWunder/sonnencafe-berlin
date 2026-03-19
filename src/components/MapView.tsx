@@ -757,12 +757,15 @@ export function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCafe]);
 
-  // ── pan to selected café ──────────────────────────────────────────────────
+  // ── pan + zoom to selected café ───────────────────────────────────────────
   useEffect(() => {
     if (!selectedCafe || !mapInstanceRef.current) return;
-    mapInstanceRef.current.easeTo({
+    const map = mapInstanceRef.current;
+    const currentZoom = map.getZoom();
+    map.easeTo({
       center: [selectedCafe.lng, selectedCafe.lat],
-      duration: 400,
+      zoom: Math.max(currentZoom, 16),
+      duration: 500,
     });
   }, [selectedCafe]);
 
