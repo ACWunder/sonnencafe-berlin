@@ -829,13 +829,13 @@ function SelectedCafeCard({
           : "bg-gradient-to-b from-zinc-200 via-zinc-100 to-white"
       }`}>
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h2 className="font-display font-bold text-zinc-900 text-[15px] leading-tight">
+          <div className="flex items-center gap-2 min-w-0">
+            <h2 className="font-display font-bold text-zinc-900 text-[15px] leading-tight truncate min-w-0">
               {cafe.name}
             </h2>
             {openStatus !== null && (
               <span
-                className={`text-[8px] font-body font-semibold shrink-0 leading-none ${openStatus ? "" : "text-red-400"}`}
+                className={`text-[8px] font-body font-semibold shrink-0 leading-none whitespace-nowrap ${openStatus ? "" : "text-red-400"}`}
                 style={openStatus ? { color: "#00cd00" } : undefined}
               >
                 {openStatus ? "geöffnet" : "geschlossen"}
