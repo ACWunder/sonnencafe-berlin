@@ -296,18 +296,24 @@ export default function Home() {
       .catch(() => {});
   }, []);
 
+  // All cafés across all districts — used for cross-district search
+  const allCafes = useMemo(
+    () => (includeRestaurants ? [...cafes, ...restaurants] : cafes),
+    [cafes, restaurants, includeRestaurants],
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim();
     if (!q) {
+      // No search: show only active district, sorted by sun
       return [...districtFilteredCafes].sort((a, b) => (sunRemaining[b.id] ?? -1) - (sunRemaining[a.id] ?? -1));
     }
 
-    // Score every cafe; keep those with any match
-    const scored = districtFilteredCafes
+    // Search active: score across ALL districts
+    const scored = allCafes
       .map((c) => ({ cafe: c, score: fuzzyScore(q, c) }))
       .filter(({ score }) => score > 0);
 
-    // Sort: match quality first, then sun remaining as tiebreaker
     scored.sort((a, b) =>
       b.score !== a.score
         ? b.score - a.score
@@ -315,7 +321,15 @@ export default function Home() {
     );
 
     return scored.map(({ cafe }) => cafe);
-  }, [districtFilteredCafes, search, sunRemaining]);
+  }, [allCafes, districtFilteredCafes, search, sunRemaining]);
+
+  // Selecting a café from another district automatically switches to it
+  const handleCafeSelect = useCallback((cafe: Cafe | null) => {
+    setSelectedCafe(cafe);
+    if (cafe?.district && (ALL_DISTRICTS as readonly string[]).includes(cafe.district)) {
+      setActiveDistrict(cafe.district);
+    }
+  }, []);
 
   const currentMinute = (() => {
     const [h, m] = timeState.time.split(":").map(Number);
@@ -496,7 +510,7 @@ export default function Home() {
                   <li key={cafe.id}>
                     <button
                       onClick={() => {
-                        setSelectedCafe(isSelected ? null : cafe);
+                        handleCafeSelect(isSelected ? null : cafe);
                         setSidebarOpen(false);
                       }}
                       className={`w-full text-left px-3 py-2.5 transition-all duration-150 border-l-2 ${
@@ -578,7 +592,7 @@ export default function Home() {
               return (
                 <li key={cafe.id} data-cafe-id={cafe.id}>
                   <button
-                    onClick={() => setSelectedCafe(isSelected ? null : cafe)}
+                    onClick={() => handleCafeSelect(isSelected ? null : cafe)}
                     className={`w-full text-left px-3 py-2.5 transition-all duration-150 border-l-2 ${
                       isSelected ? "bg-amber-50/60 border-amber-400" : "border-transparent hover:bg-zinc-50"
                     }`}
@@ -619,7 +633,7 @@ export default function Home() {
             timeState={timeState}
             cafes={deferredCafesForMap}
             selectedCafe={selectedCafe}
-            onCafeSelect={setSelectedCafe}
+            onCafeSelect={handleCafeSelect}
             onSunRemaining={handleSunRemaining}
             onSunTimeline={handleSunTimeline}
             activeDistrict={activeDistrict}
