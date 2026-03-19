@@ -480,7 +480,7 @@ export function MapView({
         style: MAP_STYLE,
         center: DISTRICT_CONFIG[activeDistrictRef.current]?.center ?? [13.397, 52.520], // [lng, lat]
         zoom: 14,
-        minZoom: 12,
+        minZoom: 10,
         maxZoom: 19,
         attributionControl: false,
       });
