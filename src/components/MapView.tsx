@@ -764,7 +764,7 @@ export function MapView({
     const currentZoom = map.getZoom();
     map.easeTo({
       center: [selectedCafe.lng, selectedCafe.lat],
-      zoom: Math.max(currentZoom, 18),
+      zoom: Math.max(currentZoom, 20),
       duration: 500,
     });
   }, [selectedCafe]);
