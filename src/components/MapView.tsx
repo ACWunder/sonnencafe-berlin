@@ -770,7 +770,7 @@ export function MapView({
     map.easeTo({
       center: [selectedCafe.lng, selectedCafe.lat],
       // Map clicks keep current zoom; list selections zoom to 18
-      zoom: fromMap ? map.getZoom() : 18,
+      zoom: fromMap ? map.getZoom() : 17,
       duration: 500,
     });
   }, [selectedCafe]);
