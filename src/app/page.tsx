@@ -204,11 +204,17 @@ export default function Home() {
   // ── Restaurant toggle ─────────────────────────────────────────────────────
   const [includeRestaurants, setIncludeRestaurants] = useState(false);
 
-  const districtFilteredCafes = useMemo(
-    () => cafes
-      .filter((c) => (c.district ?? "Berlin") === activeDistrict)
-      .filter((c) => includeRestaurants || !isRestaurantType(c.tags)),
-    [cafes, includeRestaurants, activeDistrict],
+  // Instant visible-ID set — drives both the sidebar list and which dots the map renders.
+  // MapView receives ALL cafes so it can pre-compute shadows for every cafe in the
+  // background; visibleCafeIds tells it which ones to actually show as dots.
+  const visibleCafeIds = useMemo(
+    () => new Set(
+      cafes
+        .filter((c) => (c.district ?? "Berlin") === activeDistrict)
+        .filter((c) => includeRestaurants || !isRestaurantType(c.tags))
+        .map((c) => c.id),
+    ),
+    [cafes, activeDistrict, includeRestaurants],
   );
 
   // Tap-to-close filter panel: close on short tap on map, not on drag/zoom
@@ -268,7 +274,9 @@ export default function Home() {
     };
   }, [showFilter]);
 
-  const deferredCafesForMap = useDeferredValue(districtFilteredCafes);
+  // Pass all cafes to MapView (deferred so it never blocks the UI).
+  // Visibility is controlled by visibleCafeIds, not by slicing the array.
+  const deferredCafesForMap = useDeferredValue(cafes);
 
   const currentDate = useMemo(() => {
     const [y, mo, d] = timeState.date.split("-").map(Number);
@@ -316,19 +324,17 @@ export default function Home() {
       .catch(() => {});
   }, []);
 
-  // All locations across all districts — used for cross-district search.
-  // Restaurants/bars always included here; toggle only affects map/list display.
-  const allCafes = cafes;
-
   const filtered = useMemo(() => {
     const q = search.trim();
     if (!q) {
-      // No search: show only active district, sorted by sun
-      return [...districtFilteredCafes].sort((a, b) => (sunRemaining[b.id] ?? -1) - (sunRemaining[a.id] ?? -1));
+      // No search: show only visible cafes, sorted by sun remaining
+      return cafes
+        .filter((c) => visibleCafeIds.has(c.id))
+        .sort((a, b) => (sunRemaining[b.id] ?? -1) - (sunRemaining[a.id] ?? -1));
     }
 
-    // Search active: score across ALL districts
-    const scored = allCafes
+    // Search active: score across ALL districts (restaurants always included in search)
+    const scored = cafes
       .map((c) => ({ cafe: c, score: fuzzyScore(q, c) }))
       .filter(({ score }) => score > 0);
 
@@ -343,7 +349,7 @@ export default function Home() {
     const hasGoodMatch = scored.some(({ score }) => score >= 60);
     return (hasGoodMatch ? scored.filter(({ score }) => score >= 60) : scored)
       .map(({ cafe }) => cafe);
-  }, [allCafes, districtFilteredCafes, search, sunRemaining]);
+  }, [cafes, visibleCafeIds, search, sunRemaining]);
 
   // Selecting a café from another district automatically switches to it
   const handleCafeSelect = useCallback((cafe: Cafe | null) => {
@@ -659,6 +665,7 @@ export default function Home() {
           <MapView
             timeState={timeState}
             cafes={deferredCafesForMap}
+            visibleCafeIds={visibleCafeIds}
             selectedCafe={selectedCafe}
             onCafeSelect={handleCafeSelect}
             onSunRemaining={handleSunRemaining}

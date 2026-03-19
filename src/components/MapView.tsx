@@ -110,6 +110,7 @@ function shadowCoords(b: DistrictBounds): [[number,number],[number,number],[numb
 interface MapViewProps {
   timeState: TimeState;
   cafes: Cafe[];
+  visibleCafeIds: Set<string>;
   selectedCafe: Cafe | null;
   onCafeSelect: (cafe: Cafe | null) => void;
   onSunRemaining: (data: Record<string, number | null>) => void;
@@ -294,7 +295,7 @@ function loadSunEmoji(map: any, onReady: () => void) {
 // ─── component ────────────────────────────────────────────────────────────────
 
 export function MapView({
-  timeState, cafes, selectedCafe, onCafeSelect, onSunRemaining, onSunTimeline,
+  timeState, cafes, visibleCafeIds, selectedCafe, onCafeSelect, onSunRemaining, onSunTimeline,
   activeDistrict,
 }: MapViewProps) {
   const mapRef         = useRef<HTMLDivElement>(null);
@@ -321,6 +322,8 @@ export function MapView({
   // Stable refs so event handlers always see current prop values
   const cafesRef          = useRef<Cafe[]>(cafes);
   cafesRef.current        = cafes;
+  const visibleCafeIdsRef = useRef<Set<string>>(visibleCafeIds);
+  visibleCafeIdsRef.current = visibleCafeIds;
   const selectedCafeRef   = useRef<Cafe | null>(selectedCafe);
   selectedCafeRef.current = selectedCafe;
   const onCafeSelectRef   = useRef(onCafeSelect);
@@ -355,6 +358,10 @@ export function MapView({
 
     const allBuildings = Array.from(buildingCacheRef.current.values());
 
+    // Only render cafés that are currently visible (active district + restaurant toggle).
+    // cafesRef may contain all districts; visibleCafeIdsRef is the fast filter.
+    const visibleCafes = cafesRef.current.filter((c) => visibleCafeIdsRef.current.has(c.id));
+
     // Only run shadow check for cafés visible in the current viewport.
     // Off-screen cafés are marked inShadow=true (dark dot) and get
     // corrected the next time the user pans them into view (moveend).
@@ -366,7 +373,7 @@ export function MapView({
       east:  mapBounds.getEast()  + 0.005,
     } : null;
 
-    const features = cafesRef.current.map((cafe) => {
+    const features = visibleCafes.map((cafe) => {
       const inViewport = !vp || (
         cafe.lat >= vp.south && cafe.lat <= vp.north &&
         cafe.lng >= vp.west  && cafe.lng <= vp.east
@@ -423,11 +430,14 @@ export function MapView({
       west:  chunkBounds.getWest()  - 0.02,
       east:  chunkBounds.getEast()  + 0.02,
     } : null;
-    const visible = cafesRef.current.filter((c) => !chunkVp || (
+    // Only compute sun data for currently visible cafes (active district + toggle).
+    // Viewport-visible ones first so the sidebar updates quickly.
+    const visCafes = cafesRef.current.filter((c) => visibleCafeIdsRef.current.has(c.id));
+    const visible = visCafes.filter((c) => !chunkVp || (
       c.lat >= chunkVp.south && c.lat <= chunkVp.north &&
       c.lng >= chunkVp.west  && c.lng <= chunkVp.east
     ));
-    const offscreen = cafesRef.current.filter((c) => chunkVp && !(
+    const offscreen = visCafes.filter((c) => chunkVp && !(
       c.lat >= chunkVp.south && c.lat <= chunkVp.north &&
       c.lng >= chunkVp.west  && c.lng <= chunkVp.east
     ));
@@ -464,7 +474,7 @@ export function MapView({
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (source as any).setData({
             type: "FeatureCollection",
-            features: allCafes.map((cafe) => ({
+            features: visCafes.map((cafe) => ({
               type: "Feature",
               geometry: { type: "Point", coordinates: [cafe.lng, cafe.lat] },
               properties: {
@@ -902,6 +912,13 @@ export function MapView({
     updateCafesSource(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cafes]);
+
+  // ── instant dot update when visible set changes (district / restaurant toggle) ─
+  useEffect(() => {
+    if (!mapInstanceRef.current || !mapReadyRef.current) return;
+    updateCafesSource(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleCafeIds]);
 
   // ── redraw dots when selection changes ────────────────────────────────────
   useEffect(() => {
