@@ -105,6 +105,30 @@ function shadowCoords(b: DistrictBounds): [[number,number],[number,number],[numb
   ];
 }
 
+function getCafeBounds(cafes: Cafe[]): [[number, number], [number, number]] | null {
+  if (cafes.length === 0) return null;
+
+  let south = cafes[0].lat;
+  let north = cafes[0].lat;
+  let west = cafes[0].lng;
+  let east = cafes[0].lng;
+
+  for (const cafe of cafes) {
+    south = Math.min(south, cafe.lat);
+    north = Math.max(north, cafe.lat);
+    west = Math.min(west, cafe.lng);
+    east = Math.max(east, cafe.lng);
+  }
+
+  const latPad = Math.max((north - south) * 0.12, 0.0035);
+  const lngPad = Math.max((east - west) * 0.12, 0.0035);
+
+  return [
+    [west - lngPad, south - latPad],
+    [east + lngPad, north + latPad],
+  ];
+}
+
 // ─── types ────────────────────────────────────────────────────────────────────
 
 interface MapViewProps {
@@ -954,7 +978,26 @@ export function MapView({
     // Skip the generic district flyTo when a specific café is already selected
     // (happens on cross-district café clicks: selectedCafe effect handles panning).
     if (config && !selectedCafeRef.current) {
-      mapInstanceRef.current.flyTo({ center: config.center, zoom: 16, duration: 800 });
+      const districtCafes = cafesRef.current.filter(
+        (cafe) => (cafe.district ?? "Berlin") === activeDistrict && visibleCafeIdsRef.current.has(cafe.id)
+      );
+      const cafeBounds = getCafeBounds(districtCafes);
+      if (cafeBounds) {
+        mapInstanceRef.current.fitBounds(cafeBounds, {
+          padding: { top: 56, right: 56, bottom: 56, left: 56 },
+          duration: 800,
+          maxZoom: 15,
+        });
+      } else {
+        mapInstanceRef.current.fitBounds(
+          [[config.bounds.west, config.bounds.south], [config.bounds.east, config.bounds.north]],
+          {
+            padding: { top: 56, right: 56, bottom: 56, left: 56 },
+            duration: 800,
+            maxZoom: 15,
+          }
+        );
+      }
     }
     loadDistrictBuildings(activeDistrict);
     // eslint-disable-next-line react-hooks/exhaustive-deps
