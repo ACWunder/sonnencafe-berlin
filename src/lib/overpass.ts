@@ -34,10 +34,18 @@ export function buildOverpassQuery(): string {
   way["shop"="coffee"](${bbox});
   node["shop"="tea"](${bbox});
   way["shop"="tea"](${bbox});
-  node["cuisine"~"coffee_shop|espresso|cappuccino|kaffeehaus",i](${bbox});
-  way["cuisine"~"coffee_shop|espresso|cappuccino|kaffeehaus",i](${bbox});
-  node["amenity"="cafe"]["outdoor_seating"](${bbox});
-  way["amenity"="cafe"]["outdoor_seating"](${bbox});
+  node["cuisine"~"coffee_shop|espresso|cappuccino|kaffeehaus|breakfast|sandwich",i](${bbox});
+  way["cuisine"~"coffee_shop|espresso|cappuccino|kaffeehaus|breakfast|sandwich",i](${bbox});
+  node["shop"="bakery"](${bbox});
+  way["shop"="bakery"](${bbox});
+  node["shop"="pastry"](${bbox});
+  way["shop"="pastry"](${bbox});
+  node["shop"="deli"](${bbox});
+  way["shop"="deli"](${bbox});
+  node["craft"="coffee_roaster"](${bbox});
+  way["craft"="coffee_roaster"](${bbox});
+  node["amenity"="ice_cream"](${bbox});
+  way["amenity"="ice_cream"](${bbox});
 );
 out body;
 >;
@@ -66,9 +74,10 @@ export async function fetchCafesFromOverpass(): Promise<Cafe[]> {
 // Tags that identify a café-type element (as opposed to plain geometry nodes
 // or entrance nodes that arrive in the response via `>; out body qt`)
 function isCafeElement(tags: Record<string, string>): boolean {
-  if (tags.amenity === "cafe" || tags.amenity === "coffee_shop" || tags.amenity === "bistro") return true;
-  if (tags.shop === "coffee" || tags.shop === "tea") return true;
-  if (/coffee_shop|kaffeehaus|cafe|brunch|espresso|cappuccino/i.test(tags.cuisine ?? "")) return true;
+  if (tags.amenity === "cafe" || tags.amenity === "coffee_shop" || tags.amenity === "bistro" || tags.amenity === "ice_cream") return true;
+  if (tags.shop === "coffee" || tags.shop === "tea" || tags.shop === "bakery" || tags.shop === "pastry" || tags.shop === "deli") return true;
+  if (tags.craft === "coffee_roaster") return true;
+  if (/coffee_shop|kaffeehaus|cafe|brunch|espresso|cappuccino|breakfast|sandwich/i.test(tags.cuisine ?? "")) return true;
   if (tags.amenity === "bar" && /coffee/i.test(tags.cuisine ?? "")) return true;
   return false;
 }
