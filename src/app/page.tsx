@@ -823,8 +823,8 @@ function SelectedCafeCard({
             {cafe.name}
             {openStatus !== null && (
               <span
-                className={`inline-block align-middle ml-2 text-[8px] font-body font-semibold whitespace-nowrap leading-none ${openStatus ? "" : "text-red-400"}`}
-                style={openStatus ? { color: "#00cd00" } : undefined}
+                className={`whitespace-nowrap font-body font-semibold leading-none ${openStatus ? "" : "text-red-400"}`}
+                style={{ fontSize: "8px", verticalAlign: "middle", marginLeft: "6px", ...(openStatus ? { color: "#00cd00" } : {}) }}
               >
                 {openStatus ? "geöffnet" : "geschlossen"}
                 {todayHours && (
