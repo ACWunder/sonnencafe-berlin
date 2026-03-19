@@ -72,7 +72,8 @@ export async function fetchCafesFromOverpass(): Promise<Cafe[]> {
 }
 
 export async function fetchRestaurantsFromOverpass(): Promise<Cafe[]> {
-  const bbox = `${BERLIN_FULL_BBOX.south},${BERLIN_FULL_BBOX.west},${BERLIN_FULL_BBOX.north},${BERLIN_FULL_BBOX.east}`;
+  // Use the combined bbox of the 4 districts only — much smaller than full Berlin
+  const bbox = "52.450,13.331,52.564,13.477";
   const query = `
 [out:json][timeout:60];
 (
@@ -82,8 +83,6 @@ export async function fetchRestaurantsFromOverpass(): Promise<Cafe[]> {
   way["amenity"="bar"](${bbox});
   node["amenity"="pub"](${bbox});
   way["amenity"="pub"](${bbox});
-  node["amenity"="food_court"](${bbox});
-  way["amenity"="food_court"](${bbox});
 );
 out body;
 >;
@@ -101,7 +100,7 @@ out body qt;
 
   const data: OverpassResponse = await response.json();
   return parseOverpassCafes(data, (tags) =>
-    tags.amenity === "restaurant" || tags.amenity === "bar" || tags.amenity === "pub" || tags.amenity === "food_court"
+    tags.amenity === "restaurant" || tags.amenity === "bar" || tags.amenity === "pub"
   );
 }
 

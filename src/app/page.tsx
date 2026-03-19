@@ -172,15 +172,18 @@ export default function Home() {
   // ── Restaurant toggle ─────────────────────────────────────────────────────
   const [includeRestaurants, setIncludeRestaurants] = useState(false);
   const [restaurants, setRestaurants] = useState<Cafe[]>([]);
+  const [restaurantsLoading, setRestaurantsLoading] = useState(false);
   const restaurantsFetchedRef = useRef(false);
 
   useEffect(() => {
     if (!includeRestaurants || restaurantsFetchedRef.current) return;
     restaurantsFetchedRef.current = true;
+    setRestaurantsLoading(true);
     fetch("/api/restaurants")
       .then((r) => r.json())
       .then((d) => setRestaurants(d.restaurants ?? []))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setRestaurantsLoading(false));
   }, [includeRestaurants]);
 
   const districtFilteredCafes = useMemo(() => {
@@ -670,9 +673,12 @@ export default function Home() {
                     className="w-full text-left flex items-center gap-2.5 px-0 py-2.5 transition-colors hover:bg-zinc-50 active:bg-zinc-100 rounded-lg"
                   >
                     <span className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${includeRestaurants ? "border-amber-400 bg-amber-400" : "border-zinc-200"}`}>
-                      {includeRestaurants && <span className="text-white text-[10px] leading-none font-bold">✓</span>}
+                      {includeRestaurants && !restaurantsLoading && <span className="text-white text-[10px] leading-none font-bold">✓</span>}
+                      {restaurantsLoading && <span className="text-white text-[8px] leading-none animate-spin">◌</span>}
                     </span>
-                    <span className={`text-[13px] font-body ${includeRestaurants ? "text-zinc-900 font-semibold" : "text-zinc-700"}`}>Restaurants & Bars</span>
+                    <span className={`text-[13px] font-body ${includeRestaurants ? "text-zinc-900 font-semibold" : "text-zinc-700"}`}>
+                      Restaurants & Bars{restaurantsLoading ? " …" : ""}
+                    </span>
                   </button>
                 </div>
             </div>
