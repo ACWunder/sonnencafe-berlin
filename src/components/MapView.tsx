@@ -129,6 +129,22 @@ function getCafeBounds(cafes: Cafe[]): [[number, number], [number, number]] | nu
   ];
 }
 
+function tightenBounds(
+  bounds: [[number, number], [number, number]],
+  factor = 0.5,
+): [[number, number], [number, number]] {
+  const [[west, south], [east, north]] = bounds;
+  const centerLng = (west + east) / 2;
+  const centerLat = (south + north) / 2;
+  const halfWidth = ((east - west) * factor) / 2;
+  const halfHeight = ((north - south) * factor) / 2;
+
+  return [
+    [centerLng - halfWidth, centerLat - halfHeight],
+    [centerLng + halfWidth, centerLat + halfHeight],
+  ];
+}
+
 // ─── types ────────────────────────────────────────────────────────────────────
 
 interface MapViewProps {
@@ -983,14 +999,14 @@ export function MapView({
       );
       const cafeBounds = getCafeBounds(districtCafes);
       if (cafeBounds) {
-        mapInstanceRef.current.fitBounds(cafeBounds, {
+        mapInstanceRef.current.fitBounds(tightenBounds(cafeBounds), {
           padding: { top: 56, right: 56, bottom: 56, left: 56 },
           duration: 800,
           maxZoom: 15,
         });
       } else {
         mapInstanceRef.current.fitBounds(
-          [[config.bounds.west, config.bounds.south], [config.bounds.east, config.bounds.north]],
+          tightenBounds([[config.bounds.west, config.bounds.south], [config.bounds.east, config.bounds.north]]),
           {
             padding: { top: 56, right: 56, bottom: 56, left: 56 },
             duration: 800,
