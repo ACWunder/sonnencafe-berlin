@@ -270,6 +270,8 @@ export function MapView({
 
   const shadowCanvasRef    = useRef<HTMLCanvasElement | null>(null);
   const buildingCacheRef   = useRef<Map<number, BuildingFeature>>(new Map());
+  // Persistent per-district building cache so district switches are instant after first load
+  const districtBuildingCacheRef = useRef<Map<string, BuildingFeature[]>>(new Map());
   const sunGenRef          = useRef(0);
   const currentBoundsRef   = useRef<DistrictBounds>(DISTRICT_CONFIG["Mitte"].bounds);
   const activeDistrictRef  = useRef(activeDistrict);
@@ -317,7 +319,23 @@ export function MapView({
 
     const allBuildings = Array.from(buildingCacheRef.current.values());
 
+    // Only run shadow check for cafés visible in the current viewport.
+    // Off-screen cafés are marked inShadow=true (dark dot) and get
+    // corrected the next time the user pans them into view (moveend).
+    const mapBounds = map.getBounds();
+    const vp = mapBounds ? {
+      south: mapBounds.getSouth() - 0.005,
+      north: mapBounds.getNorth() + 0.005,
+      west:  mapBounds.getWest()  - 0.005,
+      east:  mapBounds.getEast()  + 0.005,
+    } : null;
+
     const features = cafesRef.current.map((cafe) => {
+      const inViewport = !vp || (
+        cafe.lat >= vp.south && cafe.lat <= vp.north &&
+        cafe.lng >= vp.west  && cafe.lng <= vp.east
+      );
+
       let chkLat = cafe.lat, chkLng = cafe.lng;
       if (sunPos.altitudeDeg > 0) {
         const dlat = (OFFSET_M * Math.cos(azRad)) / 111_000;
@@ -327,7 +345,7 @@ export function MapView({
       }
 
       let inShadow: boolean;
-      if (sunPos.altitudeDeg <= 0) {
+      if (!inViewport || sunPos.altitudeDeg <= 0) {
         inShadow = true;
       } else {
         const LAT_MAX = 200 / 111_000;
@@ -356,10 +374,26 @@ export function MapView({
     // Heavy computation: sun-remaining + day timeline for all cafés.
     // Uses requestIdleCallback so chunks only run when the browser is idle,
     // keeping map gestures smooth. Generation counter cancels stale runs.
+    // Prioritise visible cafés first; out-of-viewport cafés are appended at end.
     const buildings   = Array.from(buildingCacheRef.current.values());
     const currentDate = new Date(`${ts.date}T${ts.time}:00`);
     const dayDate     = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), 12, 0, 0);
-    const allCafes    = [...cafesRef.current];
+    const chunkBounds = map.getBounds();
+    const chunkVp = chunkBounds ? {
+      south: chunkBounds.getSouth() - 0.02,
+      north: chunkBounds.getNorth() + 0.02,
+      west:  chunkBounds.getWest()  - 0.02,
+      east:  chunkBounds.getEast()  + 0.02,
+    } : null;
+    const visible = cafesRef.current.filter((c) => !chunkVp || (
+      c.lat >= chunkVp.south && c.lat <= chunkVp.north &&
+      c.lng >= chunkVp.west  && c.lng <= chunkVp.east
+    ));
+    const offscreen = cafesRef.current.filter((c) => chunkVp && !(
+      c.lat >= chunkVp.south && c.lat <= chunkVp.north &&
+      c.lng >= chunkVp.west  && c.lng <= chunkVp.east
+    ));
+    const allCafes = [...visible, ...offscreen];
     const remaining: Record<string, number | null> = {};
     const timelines: SunTimelineData = {};
     const CHUNK = 15;
@@ -423,48 +457,73 @@ export function MapView({
     updateCafesSource(false);
   }
 
-  function loadDistrictBuildings(district: string) {
+  function applyDistrictBuildings(district: string, buildings: BuildingFeature[]) {
     const config = DISTRICT_CONFIG[district];
     if (!config) return;
 
-    // Resize shadow canvas for this district's bounds
     const { w, h } = shadowCanvasSize(config.bounds);
     const canvas = shadowCanvasRef.current;
     if (canvas) { canvas.width = w; canvas.height = h; }
     currentBoundsRef.current = config.bounds;
-
-    // Cancel any in-flight sun computation from the previous district
     sunGenRef.current++;
 
-    setFetching(true);
     buildingCacheRef.current.clear();
+    buildings.forEach((b) => buildingCacheRef.current.set(b.id, b));
 
+    const map = mapInstanceRef.current;
+    if (!map || !mapReadyRef.current) return;
+
+    const source = map.getSource("buildings-source");
+    if (source) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (source as any).setData({
+        type: "FeatureCollection",
+        features: buildings.map((b) => ({
+          type: "Feature",
+          geometry: { type: "Polygon", coordinates: [polygonToGeoJSON(b.polygon as [number,number][])] },
+          properties: { id: b.id },
+        })),
+      });
+    }
+
+    updateShadowSource(buildings, timeStateRef.current);
+    updateCafesSource(true);
+    setFetching(false);
+  }
+
+  function loadDistrictBuildings(district: string) {
+    const config = DISTRICT_CONFIG[district];
+    if (!config) return;
+
+    // If already cached, apply instantly — no network fetch needed
+    const cached = districtBuildingCacheRef.current.get(district);
+    if (cached) {
+      applyDistrictBuildings(district, cached);
+      return;
+    }
+
+    setFetching(true);
     fetch(config.file)
       .then((r) => r.json())
       .then(({ buildings }: { buildings: BuildingFeature[] }) => {
-        buildings.forEach((b) => buildingCacheRef.current.set(b.id, b));
-
-        const map = mapInstanceRef.current;
-        if (!map || !mapReadyRef.current) return;
-
-        const source = map.getSource("buildings-source");
-        if (source) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (source as any).setData({
-            type: "FeatureCollection",
-            features: buildings.map((b) => ({
-              type: "Feature",
-              geometry: { type: "Polygon", coordinates: [polygonToGeoJSON(b.polygon as [number,number][])] },
-              properties: { id: b.id },
-            })),
-          });
+        districtBuildingCacheRef.current.set(district, buildings);
+        if (activeDistrictRef.current === district) {
+          applyDistrictBuildings(district, buildings);
         }
-
-        updateShadowSource(buildings, timeStateRef.current);
-        updateCafesSource(true);
-        setFetching(false);
       })
       .catch(() => setFetching(false));
+  }
+
+  function prefetchDistrictBuildings(district: string) {
+    if (districtBuildingCacheRef.current.has(district)) return;
+    const config = DISTRICT_CONFIG[district];
+    if (!config) return;
+    fetch(config.file)
+      .then((r) => r.json())
+      .then(({ buildings }: { buildings: BuildingFeature[] }) => {
+        districtBuildingCacheRef.current.set(district, buildings);
+      })
+      .catch(() => {});
   }
 
   function loadGreenAreas() {
@@ -719,6 +778,12 @@ export function MapView({
 
         loadDistrictBuildings(activeDistrictRef.current);
         loadGreenAreas();
+
+        // Pre-fetch all other district building files in the background
+        // so switching districts later is instant (no network wait).
+        Object.keys(DISTRICT_CONFIG).forEach((d) => {
+          if (d !== activeDistrictRef.current) prefetchDistrictBuildings(d);
+        });
       });
     });
 
