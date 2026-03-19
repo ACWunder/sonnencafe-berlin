@@ -37,6 +37,37 @@ function ohExpandDays(spec: string): number[] {
   return days;
 }
 
+/** Returns today's opening hours as a formatted string like "9–18h", or null. */
+function getTodayHours(oh: string | undefined, date: Date): string | null {
+  if (!oh) return null;
+  const s = oh.trim();
+  if (s === "24/7") return "24/7";
+
+  const dow = date.getDay();
+  let result: string | null = null;
+
+  for (const rule of s.split(";")) {
+    const r = rule.trim();
+    if (!r) continue;
+    const m = r.match(/^([A-Za-z,\-]+)\s+(.+)$/);
+    if (!m) continue;
+    const days = ohExpandDays(m[1]);
+    if (!days.includes(dow)) continue;
+    const timeSpec = m[2].trim().toLowerCase();
+    if (timeSpec === "off") { result = null; continue; }
+    // Format first time range: "09:00-18:00" → "9–18h"
+    const range = timeSpec.split(",")[0].trim();
+    const parts = range.split("-");
+    if (parts.length < 2) continue;
+    const fmt = (t: string) => {
+      const [h, m2] = t.trim().split(":").map(Number);
+      return m2 ? `${h}:${String(m2).padStart(2, "0")}` : `${h}`;
+    };
+    result = `${fmt(parts[0])}–${fmt(parts[1])}h`;
+  }
+  return result;
+}
+
 /** Returns true=open, false=closed, null=unknown */
 function isOpenNow(oh: string | undefined, date: Date): boolean | null {
   if (!oh) return null;
@@ -749,6 +780,7 @@ function SelectedCafeCard({
 
   const isSunny = mins !== null && mins !== undefined;
   const openStatus = isOpenNow(cafe.tags?.opening_hours, currentDate);
+  const todayHours = getTodayHours(cafe.tags?.opening_hours, currentDate);
   const mapsQuery = cafe.address
     ? [cafe.name, cafe.address, "Berlin"].join(", ")
     : cafe.name;
@@ -807,6 +839,9 @@ function SelectedCafeCard({
                 style={openStatus ? { color: "#00cd00" } : undefined}
               >
                 {openStatus ? "geöffnet" : "geschlossen"}
+                {todayHours && (
+                  <span className="font-normal opacity-80"> · {todayHours}</span>
+                )}
               </span>
             )}
           </div>
