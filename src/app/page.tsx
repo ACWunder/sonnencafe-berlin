@@ -169,10 +169,24 @@ export default function Home() {
   const ALL_DISTRICTS = ["Mitte", "Kreuzberg", "Prenzlauer Berg", "Schöneberg"] as const;
   const [activeDistrict, setActiveDistrict] = useState<string>("Mitte");
 
-  const districtFilteredCafes = useMemo(
-    () => cafes.filter((c) => (c.district ?? "Berlin") === activeDistrict),
-    [cafes, activeDistrict],
-  );
+  // ── Restaurant toggle ─────────────────────────────────────────────────────
+  const [includeRestaurants, setIncludeRestaurants] = useState(false);
+  const [restaurants, setRestaurants] = useState<Cafe[]>([]);
+  const restaurantsFetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (!includeRestaurants || restaurantsFetchedRef.current) return;
+    restaurantsFetchedRef.current = true;
+    fetch("/api/restaurants")
+      .then((r) => r.json())
+      .then((d) => setRestaurants(d.restaurants ?? []))
+      .catch(() => {});
+  }, [includeRestaurants]);
+
+  const districtFilteredCafes = useMemo(() => {
+    const all = includeRestaurants ? [...cafes, ...restaurants] : cafes;
+    return all.filter((c) => (c.district ?? "Berlin") === activeDistrict);
+  }, [cafes, restaurants, includeRestaurants, activeDistrict]);
 
   // Tap-to-close filter panel: close on short tap on map, not on drag/zoom
   useEffect(() => {
@@ -648,6 +662,18 @@ export default function Home() {
                       </button>
                     );
                   })}
+                </div>
+                <div className="border-t border-zinc-100 px-3.5 pt-2.5 pb-2.5">
+                  <span className="text-[10px] font-body font-bold uppercase tracking-widest text-zinc-400">Typ</span>
+                  <button
+                    onClick={() => { setIncludeRestaurants((v) => !v); setSelectedCafe(null); }}
+                    className="w-full text-left flex items-center gap-2.5 px-0 py-2.5 transition-colors hover:bg-zinc-50 active:bg-zinc-100 rounded-lg"
+                  >
+                    <span className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${includeRestaurants ? "border-amber-400 bg-amber-400" : "border-zinc-200"}`}>
+                      {includeRestaurants && <span className="text-white text-[10px] leading-none font-bold">✓</span>}
+                    </span>
+                    <span className={`text-[13px] font-body ${includeRestaurants ? "text-zinc-900 font-semibold" : "text-zinc-700"}`}>Restaurants & Bars</span>
+                  </button>
                 </div>
             </div>
           )}

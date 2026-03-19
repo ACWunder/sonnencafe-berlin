@@ -71,6 +71,40 @@ export async function fetchCafesFromOverpass(): Promise<Cafe[]> {
   return parseOverpassCafes(data);
 }
 
+export async function fetchRestaurantsFromOverpass(): Promise<Cafe[]> {
+  const bbox = `${BERLIN_FULL_BBOX.south},${BERLIN_FULL_BBOX.west},${BERLIN_FULL_BBOX.north},${BERLIN_FULL_BBOX.east}`;
+  const query = `
+[out:json][timeout:60];
+(
+  node["amenity"="restaurant"](${bbox});
+  way["amenity"="restaurant"](${bbox});
+  node["amenity"="bar"](${bbox});
+  way["amenity"="bar"](${bbox});
+  node["amenity"="pub"](${bbox});
+  way["amenity"="pub"](${bbox});
+  node["amenity"="food_court"](${bbox});
+  way["amenity"="food_court"](${bbox});
+);
+out body;
+>;
+out body qt;
+  `.trim();
+
+  const response = await fetch(OVERPASS_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `data=${encodeURIComponent(query)}`,
+    next: { revalidate: 3600 },
+  });
+
+  if (!response.ok) throw new Error(`Overpass API error: ${response.status}`);
+
+  const data: OverpassResponse = await response.json();
+  return parseOverpassCafes(data, (tags) =>
+    tags.amenity === "restaurant" || tags.amenity === "bar" || tags.amenity === "pub" || tags.amenity === "food_court"
+  );
+}
+
 // Tags that identify a café-type element (as opposed to plain geometry nodes
 // or entrance nodes that arrive in the response via `>; out body qt`)
 function isCafeElement(tags: Record<string, string>): boolean {
@@ -116,7 +150,7 @@ function streetFacingPoint(
   return best;
 }
 
-function parseOverpassCafes(data: OverpassResponse): Cafe[] {
+function parseOverpassCafes(data: OverpassResponse, isValid: (tags: Record<string, string>) => boolean = isCafeElement): Cafe[] {
   // Build lookup tables from constituent nodes returned by `>; out body qt`.
   // These nodes have coordinates; entrance-tagged ones also carry tags.
   const nodeCoords = new Map<number, { lat: number; lon: number }>();
@@ -134,7 +168,7 @@ function parseOverpassCafes(data: OverpassResponse): Cafe[] {
   return data.elements
     .filter((el) => {
       // Keep only real café-type elements (exclude plain geometry / entrance nodes)
-      if (!el.tags || !isCafeElement(el.tags)) return false;
+      if (!el.tags || !isValid(el.tags)) return false;
       const lat = el.lat ?? el.center?.lat;
       const lon = el.lon ?? el.center?.lon;
       return lat !== undefined && lon !== undefined;
