@@ -684,7 +684,7 @@ export default function Home() {
           <button
             ref={filterButtonRef}
             onClick={() => { setShowFilter((v) => !v); setSelectedCafe(null); }}
-            className="absolute top-20 left-3 z-[500] w-[56px] h-[56px] bg-amber-400 border border-amber-300 text-white backdrop-blur-xl rounded-full shadow-lg shadow-zinc-200/40 flex items-center justify-center"
+            className={`absolute top-20 left-3 z-[500] w-[56px] h-[56px] backdrop-blur-xl rounded-full shadow-lg shadow-zinc-200/40 flex items-center justify-center ${includeRestaurants ? "bg-amber-400 border border-amber-300 text-white" : "bg-white/90 border border-zinc-100 text-zinc-500"}`}
             title="Bezirk wählen"
           >
             <SlidersHorizontal className="w-5 h-5" />
