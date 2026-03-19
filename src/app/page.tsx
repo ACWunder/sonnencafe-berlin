@@ -829,8 +829,8 @@ function SelectedCafeCard({
           : "bg-gradient-to-b from-zinc-200 via-zinc-100 to-white"
       }`}>
         <div className="min-w-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <h2 className="font-display font-bold text-zinc-900 text-[15px] leading-tight truncate min-w-0">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <h2 className="font-display font-bold text-zinc-900 text-[15px] leading-tight">
               {cafe.name}
             </h2>
             {openStatus !== null && (
