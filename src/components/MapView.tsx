@@ -55,7 +55,7 @@ const BERLIN_CENTER: [number, number] = [
   (BERLIN_BOUNDS.west  + BERLIN_BOUNDS.east)  / 2,
 ];
 
-const MAP_STYLE = "https://tiles.openfreemap.org/styles/positron";
+const MAP_STYLE = "https://tiles.openfreemap.org/styles/bright";
 const FALLBACK_HEIGHT = 18;
 const _ZOOM16_PX = (Math.pow(2, 16) * 256) / 360; // px per degree at zoom 16
 
@@ -305,6 +305,14 @@ function renderShadowCanvas(
 }
 
 // Flip [lat, lng] polygon to GeoJSON [lng, lat] and close the ring
+function polygonAreaM2(polygon: [number, number][]): number {
+  let area = 0;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    area += (polygon[j][1] + polygon[i][1]) * (polygon[j][0] - polygon[i][0]);
+  }
+  return (Math.abs(area) / 2) * 111_000 * 74_000;
+}
+
 function polygonToGeoJSON(polygon: [number, number][]): number[][] {
   const ring = polygon.map(([lat, lng]) => [lng, lat]);
   if (ring.length > 0 &&
@@ -592,11 +600,13 @@ export function MapView({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (source as any).setData({
         type: "FeatureCollection",
-        features: buildings.map((b) => ({
-          type: "Feature",
-          geometry: { type: "Polygon", coordinates: [polygonToGeoJSON(b.polygon as [number,number][])] },
-          properties: { id: b.id },
-        })),
+        features: buildings
+          .filter((b) => polygonAreaM2(b.polygon as [number, number][]) >= 80)
+          .map((b) => ({
+            type: "Feature",
+            geometry: { type: "Polygon", coordinates: [polygonToGeoJSON(b.polygon as [number,number][])] },
+            properties: { id: b.id },
+          })),
       });
     }
 
@@ -716,20 +726,23 @@ export function MapView({
         )?.id;
         const before = firstSymbolId; // undefined is fine — appends to end if no symbols
 
+        // ── hide POI layers ────────────────────────────────────────────────
+        map.getStyle().layers.forEach((l: { id: string; type: string; "source-layer"?: string }) => {
+          if (l["source-layer"] === "poi") {
+            map.setLayoutProperty(l.id, "visibility", "none");
+          }
+        });
+
         // ── filter place labels ────────────────────────────────────────────
-        // In OpenFreeMap positron, "label_other" is a catch-all that renders
-        // every place class not explicitly listed (city/country/state/town/village).
-        // That includes both "suburb" (= official Bezirke, keep) and
-        // "neighbourhood"/"quarter" (= Grätzl like Strozziggrund, hide).
-        // We replace the filter with the same match expression but add the
-        // unwanted classes to the exclusion list.
-        map.setFilter("label_other", [
-          "match", ["get", "class"],
-          ["city", "continent", "country", "hamlet", "isolated_dwelling",
-           "neighbourhood", "quarter", "state", "town", "village"],
-          false,
-          true,
-        ]);
+        if (map.getLayer("label_other")) {
+          map.setFilter("label_other", [
+            "match", ["get", "class"],
+            ["city", "continent", "country", "hamlet", "isolated_dwelling",
+             "neighbourhood", "quarter", "state", "town", "village"],
+            false,
+            true,
+          ]);
+        }
 
         // ── shadow canvas — sized for the initial district (Mitte) ────────
 
@@ -793,14 +806,14 @@ export function MapView({
           id: "green-areas",
           type: "fill",
           source: "green-areas-source",
-          paint: { "fill-color": "#86efac", "fill-opacity": 0.55 },
+          paint: { "fill-color": "#aad3a0", "fill-opacity": 0.55 },
         }, before);
 
         map.addLayer({
           id: "sunny-overlay",
           type: "fill",
           source: "sunny-overlay-source",
-          paint: { "fill-color": "#fde68a", "fill-opacity": 0.38 },
+          paint: { "fill-color": "#fde68a", "fill-opacity": 0.25 },
         }, before);
 
         // Raster shadow layer — opacity here is the only transparency applied;
@@ -818,14 +831,14 @@ export function MapView({
           id: "buildings-fill",
           type: "fill",
           source: "buildings-source",
-          paint: { "fill-color": "#e2e8f0", "fill-opacity": 1.0 },
+          paint: { "fill-color": "#f0ebe3", "fill-opacity": 1.0 },
         }, before);
 
         map.addLayer({
           id: "buildings-outline",
           type: "line",
           source: "buildings-source",
-          paint: { "line-color": "#94a3b8", "line-width": 0.8 },
+          paint: { "line-color": "#c9beaf", "line-width": 0.7 },
         }, before);
 
         // Shade cafés — circle layer, always visible
@@ -1108,11 +1121,11 @@ function Legend() {
         <span className="font-body text-zinc-600" style={{ fontSize: "11px" }}>Schatten</span>
       </div>
       <div className="flex items-center gap-2 mb-1.5">
-        <div style={{ width: 12, height: 12, borderRadius: 4, background: "#e2e8f0", border: "1.5px solid #cbd5e1" }} />
+        <div style={{ width: 12, height: 12, borderRadius: 4, background: "#f0ebe3", border: "1.5px solid #c9beaf" }} />
         <span className="font-body text-zinc-600" style={{ fontSize: "11px" }}>Gebäude</span>
       </div>
       <div className="flex items-center gap-2">
-        <div style={{ width: 12, height: 12, borderRadius: 4, background: "#86efac" }} />
+        <div style={{ width: 12, height: 12, borderRadius: 4, background: "#aad3a0" }} />
         <span className="font-body text-zinc-600" style={{ fontSize: "11px" }}>Grünfläche</span>
       </div>
     </div>
