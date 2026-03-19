@@ -919,7 +919,7 @@ export function MapView({
     map.easeTo({
       center: [selectedCafe.lng, selectedCafe.lat],
       // Map clicks keep current zoom; list selections zoom to 18
-      zoom: fromMap ? map.getZoom() : 16,
+      zoom: fromMap ? map.getZoom() : 15,
       duration: 500,
     });
   }, [selectedCafe]);
