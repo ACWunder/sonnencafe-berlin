@@ -313,8 +313,13 @@ export default function Home() {
   // Selecting a café from another district automatically switches to it
   const handleCafeSelect = useCallback((cafe: Cafe | null) => {
     setSelectedCafe(cafe);
-    if (cafe?.district && (ALL_DISTRICTS as readonly string[]).includes(cafe.district)) {
+    if (!cafe) return;
+    if (cafe.district && (ALL_DISTRICTS as readonly string[]).includes(cafe.district)) {
       setActiveDistrict(cafe.district);
+    }
+    // If it's a restaurant/bar, enable the toggle so it appears on the map
+    if (isRestaurantType(cafe.tags)) {
+      setIncludeRestaurants(true);
     }
   }, []);
 

@@ -66,7 +66,7 @@ export async function fetchCafesFromOverpass(): Promise<Cafe[]> {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: `data=${encodeURIComponent(query)}`,
-    next: { revalidate: 3600 }, // Cache for 1 hour in Next.js
+    cache: "no-store", // rely on in-memory cache in the API route instead
   });
 
   if (!response.ok) {
