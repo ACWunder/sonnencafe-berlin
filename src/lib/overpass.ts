@@ -260,23 +260,26 @@ function pointInDistrict(lat: number, lng: number, ring: [number, number][]): bo
   return inside;
 }
 
-// Precomputed district centroids for nearest-district fallback
-const DISTRICT_CENTROIDS = DISTRICT_POLYGONS.map(({ name, ring }) => ({
-  name,
-  lat: ring.reduce((s, [y]) => s + y, 0) / ring.length,
-  lng: ring.reduce((s, [, x]) => s + x, 0) / ring.length,
-}));
+// These bounds match DISTRICT_CONFIG in MapView.tsx exactly — the same area
+// covered by each district's building file. Cafés outside these bboxes won't
+// have building data, so we exclude them (return "Berlin" → filtered out).
+const DISTRICT_BOUNDS: Record<string, { south: number; west: number; north: number; east: number }> = {
+  "Mitte":           { south: 52.499, west: 13.361, north: 52.545, east: 13.434 },
+  "Kreuzberg":       { south: 52.478, west: 13.363, north: 52.514, east: 13.458 },
+  "Prenzlauer Berg": { south: 52.515, west: 13.392, north: 52.564, east: 13.477 },
+  "Schöneberg":      { south: 52.450, west: 13.331, north: 52.510, east: 13.382 },
+};
 
 /** Returns the Berlin district name ("Mitte", "Kreuzberg", "Prenzlauer Berg", "Schöneberg") or "Berlin". */
 function guessDistrict(lat: number, lng: number): string {
   for (const { name, ring } of DISTRICT_POLYGONS) {
     if (pointInDistrict(lat, lng, ring)) return name;
   }
-  // Fallback: assign to nearest district centroid (handles gaps at polygon boundaries)
-  let bestDist = Infinity, bestName = "Berlin";
-  for (const { name, lat: cLat, lng: cLng } of DISTRICT_CENTROIDS) {
-    const d = Math.hypot(lat - cLat, lng - cLng);
-    if (d < bestDist) { bestDist = d; bestName = name; }
+  // Fallback: assign to a district if the point falls within its building-coverage bbox.
+  // This handles tiny gaps at simplified polygon boundaries without pulling in
+  // locations that have no building data behind them.
+  for (const [name, b] of Object.entries(DISTRICT_BOUNDS)) {
+    if (lat >= b.south && lat <= b.north && lng >= b.west && lng <= b.east) return name;
   }
-  return bestDist < 0.05 ? bestName : "Berlin";
+  return "Berlin";
 }
