@@ -274,6 +274,9 @@ export function MapView({
   const currentBoundsRef   = useRef<DistrictBounds>(DISTRICT_CONFIG["Mitte"].bounds);
   const activeDistrictRef  = useRef(activeDistrict);
   activeDistrictRef.current = activeDistrict;
+  // true when the current selectedCafe change came from a map marker click
+  // (not from the sidebar list) — used to skip zoom in the pan effect
+  const selectFromMapRef = useRef(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const locationMarkerRef = useRef<any>(null);
 
@@ -692,6 +695,7 @@ export function MapView({
           const cafe = cafesRef.current.find((c) => c.id === id);
           if (cafe) {
             e.originalEvent.stopPropagation();
+            selectFromMapRef.current = true;
             onCafeSelectRef.current(cafe);
           }
         });
@@ -757,14 +761,16 @@ export function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedCafe]);
 
-  // ── pan + zoom to selected café ───────────────────────────────────────────
+  // ── pan/zoom to selected café ─────────────────────────────────────────────
   useEffect(() => {
     if (!selectedCafe || !mapInstanceRef.current) return;
     const map = mapInstanceRef.current;
-    const currentZoom = map.getZoom();
+    const fromMap = selectFromMapRef.current;
+    selectFromMapRef.current = false;
     map.easeTo({
       center: [selectedCafe.lng, selectedCafe.lat],
-      zoom: Math.max(currentZoom, 18),
+      // Map clicks keep current zoom; list selections zoom to 18
+      zoom: fromMap ? map.getZoom() : 18,
       duration: 500,
     });
   }, [selectedCafe]);
