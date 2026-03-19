@@ -812,23 +812,13 @@ function SelectedCafeCard({
   return (
     <div className={`m-3 rounded-2xl overflow-hidden border border-zinc-100 shadow-xl shadow-zinc-200/40 shrink-0 bg-white relative cafe-card-enter${isClosing ? " cafe-card-leave" : ""}`}>
 
-      {/* iOS-style close button — absolute top-right corner */}
-      <button
-        onClick={handleClose}
-        className="absolute top-1 right-1 z-10 w-[52px] h-[52px] flex items-center justify-center active:scale-90 transition-transform duration-100"
-      >
-        <span className="w-[32px] h-[32px] rounded-full bg-zinc-900/[0.07] flex items-center justify-center">
-          <X className="w-[15px] h-[15px] text-zinc-500" strokeWidth={2.5} />
-        </span>
-      </button>
-
       {/* Card header */}
-      <div className={`px-4 pt-4 pb-3.5 pr-14 ${
+      <div className={`flex items-start pl-4 pr-2 pt-4 pb-3.5 ${
         isSunny
           ? "bg-gradient-to-b from-amber-100 via-amber-50 to-white"
           : "bg-gradient-to-b from-zinc-200 via-zinc-100 to-white"
       }`}>
-        <div className="min-w-0">
+        <div className="flex-1 min-w-0">
           <h2 className="font-display font-bold text-zinc-900 text-[15px] leading-tight">
             {cafe.name}
             {openStatus !== null && (
@@ -851,17 +841,26 @@ function SelectedCafeCard({
               </p>
             </div>
           )}
+          {/* Sun pill */}
+          <div className={`inline-flex items-center gap-1.5 mt-2.5 px-2.5 py-1 rounded-full font-body font-medium whitespace-nowrap max-w-full overflow-hidden text-[10.5px] ${
+            isSunny
+              ? "bg-orange-100/80 text-orange-600"
+              : "bg-zinc-100 text-zinc-500"
+          }`}>
+            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isSunny ? "bg-orange-400 sun-pulse" : "bg-zinc-400"}`} />
+            <span className="truncate">{sunLabel}</span>
+          </div>
         </div>
 
-        {/* Sun pill */}
-        <div className={`inline-flex items-center gap-1.5 mt-2.5 px-2.5 py-1 rounded-full font-body font-medium whitespace-nowrap max-w-full overflow-hidden text-[10.5px] ${
-          isSunny
-            ? "bg-orange-100/80 text-orange-600"
-            : "bg-zinc-100 text-zinc-500"
-        }`}>
-          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isSunny ? "bg-orange-400 sun-pulse" : "bg-zinc-400"}`} />
-          <span className="truncate">{sunLabel}</span>
-        </div>
+        {/* Close button — flex sibling so text area is bounded, never overlaps */}
+        <button
+          onClick={handleClose}
+          className="shrink-0 w-[44px] h-[44px] flex items-start justify-center pt-3 active:scale-90 transition-transform duration-100"
+        >
+          <span className="w-[28px] h-[28px] rounded-full bg-zinc-900/[0.07] flex items-center justify-center">
+            <X className="w-[14px] h-[14px] text-zinc-500" strokeWidth={2.5} />
+          </span>
+        </button>
       </div>
 
       {/* Sun timeline */}
