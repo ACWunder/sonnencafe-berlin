@@ -7,6 +7,7 @@ import { Sun, Search, MapPin, X, ExternalLink, Info, Menu, SlidersHorizontal } f
 import type { Cafe, TimeState, SunTimeline, SunTimelineData } from "@/types";
 import { MapView } from "@/components/MapView";
 import { InstallBanner } from "@/components/InstallBanner";
+import { isRestaurantType } from "@/lib/overpass";
 
 // ─── Opening hours parser (OSM format) ───────────────────────────────────────
 
@@ -171,27 +172,13 @@ export default function Home() {
 
   // ── Restaurant toggle ─────────────────────────────────────────────────────
   const [includeRestaurants, setIncludeRestaurants] = useState(false);
-  const [restaurants, setRestaurants] = useState<Cafe[]>([]);
-  const [restaurantsLoading, setRestaurantsLoading] = useState(false);
-  const restaurantsFetchedRef = useRef(false);
 
-  // Fetch restaurants on mount so they're always available for search.
-  // Also used when the toggle is switched on.
-  useEffect(() => {
-    if (restaurantsFetchedRef.current) return;
-    restaurantsFetchedRef.current = true;
-    setRestaurantsLoading(true);
-    fetch("/api/restaurants")
-      .then((r) => r.json())
-      .then((d) => setRestaurants(d.restaurants ?? []))
-      .catch(() => {})
-      .finally(() => setRestaurantsLoading(false));
-  }, []);
-
-  const districtFilteredCafes = useMemo(() => {
-    const all = includeRestaurants ? [...cafes, ...restaurants] : cafes;
-    return all.filter((c) => (c.district ?? "Berlin") === activeDistrict);
-  }, [cafes, restaurants, includeRestaurants, activeDistrict]);
+  const districtFilteredCafes = useMemo(
+    () => cafes
+      .filter((c) => (c.district ?? "Berlin") === activeDistrict)
+      .filter((c) => includeRestaurants || !isRestaurantType(c.tags)),
+    [cafes, includeRestaurants, activeDistrict],
+  );
 
   // Tap-to-close filter panel: close on short tap on map, not on drag/zoom
   useEffect(() => {
@@ -298,12 +285,9 @@ export default function Home() {
       .catch(() => {});
   }, []);
 
-  // All locations across all districts — always includes restaurants for search,
-  // regardless of the toggle (toggle only affects map/list display).
-  const allCafes = useMemo(
-    () => [...cafes, ...restaurants],
-    [cafes, restaurants],
-  );
+  // All locations across all districts — used for cross-district search.
+  // Restaurants/bars always included here; toggle only affects map/list display.
+  const allCafes = cafes;
 
   const filtered = useMemo(() => {
     const q = search.trim();
@@ -690,11 +674,10 @@ export default function Home() {
                     className="w-full text-left flex items-center gap-2.5 px-0 py-2.5 transition-colors hover:bg-zinc-50 active:bg-zinc-100 rounded-lg"
                   >
                     <span className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${includeRestaurants ? "border-amber-400 bg-amber-400" : "border-zinc-200"}`}>
-                      {includeRestaurants && !restaurantsLoading && <span className="text-white text-[10px] leading-none font-bold">✓</span>}
-                      {restaurantsLoading && <span className="text-white text-[8px] leading-none animate-spin">◌</span>}
+                      {includeRestaurants && <span className="text-white text-[10px] leading-none font-bold">✓</span>}
                     </span>
                     <span className={`text-[13px] font-body ${includeRestaurants ? "text-zinc-900 font-semibold" : "text-zinc-700"}`}>
-                      Restaurants & Bars{restaurantsLoading ? " …" : ""}
+                      Restaurants & Bars
                     </span>
                   </button>
                 </div>

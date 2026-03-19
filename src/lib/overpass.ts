@@ -46,6 +46,12 @@ export function buildOverpassQuery(): string {
   way["craft"="coffee_roaster"](${bbox});
   node["amenity"="ice_cream"](${bbox});
   way["amenity"="ice_cream"](${bbox});
+  node["amenity"="restaurant"](${bbox});
+  way["amenity"="restaurant"](${bbox});
+  node["amenity"="bar"](${bbox});
+  way["amenity"="bar"](${bbox});
+  node["amenity"="pub"](${bbox});
+  way["amenity"="pub"](${bbox});
 );
 out body;
 >;
@@ -71,47 +77,23 @@ export async function fetchCafesFromOverpass(): Promise<Cafe[]> {
   return parseOverpassCafes(data);
 }
 
-export async function fetchRestaurantsFromOverpass(): Promise<Cafe[]> {
-  // Use the combined bbox of the 4 districts only — much smaller than full Berlin
-  const bbox = "52.450,13.331,52.564,13.477";
-  const query = `
-[out:json][timeout:60];
-(
-  node["amenity"="restaurant"](${bbox});
-  way["amenity"="restaurant"](${bbox});
-  node["amenity"="bar"](${bbox});
-  way["amenity"="bar"](${bbox});
-  node["amenity"="pub"](${bbox});
-  way["amenity"="pub"](${bbox});
-);
-out body;
->;
-out body qt;
-  `.trim();
-
-  const response = await fetch(OVERPASS_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `data=${encodeURIComponent(query)}`,
-    next: { revalidate: 3600 },
-  });
-
-  if (!response.ok) throw new Error(`Overpass API error: ${response.status}`);
-
-  const data: OverpassResponse = await response.json();
-  return parseOverpassCafes(data, (tags) =>
-    tags.amenity === "restaurant" || tags.amenity === "bar" || tags.amenity === "pub"
-  );
-}
-
 // Tags that identify a café-type element (as opposed to plain geometry nodes
 // or entrance nodes that arrive in the response via `>; out body qt`)
 function isCafeElement(tags: Record<string, string>): boolean {
   if (tags.amenity === "cafe" || tags.amenity === "coffee_shop" || tags.amenity === "bistro" || tags.amenity === "ice_cream") return true;
+  if (tags.amenity === "restaurant" || tags.amenity === "bar" || tags.amenity === "pub") return true;
   if (tags.shop === "coffee" || tags.shop === "tea" || tags.shop === "bakery" || tags.shop === "pastry" || tags.shop === "deli") return true;
   if (tags.craft === "coffee_roaster") return true;
   if (/coffee_shop|kaffeehaus|cafe|brunch|espresso|cappuccino|breakfast|sandwich/i.test(tags.cuisine ?? "")) return true;
-  if (tags.amenity === "bar" && /coffee/i.test(tags.cuisine ?? "")) return true;
+  return false;
+}
+
+/** True for restaurants/bars/pubs that should be hidden unless the toggle is on */
+export function isRestaurantType(tags: Record<string, string> | undefined): boolean {
+  if (!tags) return false;
+  if (tags.amenity === "restaurant" || tags.amenity === "pub") return true;
+  // bars are restaurant-type unless they have a coffee cuisine (already café-like)
+  if (tags.amenity === "bar" && !/coffee/i.test(tags.cuisine ?? "")) return true;
   return false;
 }
 
