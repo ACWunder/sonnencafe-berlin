@@ -111,6 +111,7 @@ interface MapViewProps {
   timeState: TimeState;
   cafes: Cafe[];
   visibleCafeIds: Set<string>;
+  sunRemaining: Record<string, number | null>;
   selectedCafe: Cafe | null;
   onCafeSelect: (cafe: Cafe | null) => void;
   onSunRemaining: (data: Record<string, number | null>) => void;
@@ -295,7 +296,7 @@ function loadSunEmoji(map: any, onReady: () => void) {
 // ─── component ────────────────────────────────────────────────────────────────
 
 export function MapView({
-  timeState, cafes, visibleCafeIds, selectedCafe, onCafeSelect, onSunRemaining, onSunTimeline,
+  timeState, cafes, visibleCafeIds, sunRemaining, selectedCafe, onCafeSelect, onSunRemaining, onSunTimeline,
   activeDistrict,
 }: MapViewProps) {
   const mapRef         = useRef<HTMLDivElement>(null);
@@ -324,6 +325,8 @@ export function MapView({
   cafesRef.current        = cafes;
   const visibleCafeIdsRef = useRef<Set<string>>(visibleCafeIds);
   visibleCafeIdsRef.current = visibleCafeIds;
+  const sunRemainingRef   = useRef<Record<string, number | null>>(sunRemaining);
+  sunRemainingRef.current = sunRemaining;
   const selectedCafeRef   = useRef<Cafe | null>(selectedCafe);
   selectedCafeRef.current = selectedCafe;
   const onCafeSelectRef   = useRef(onCafeSelect);
@@ -374,6 +377,7 @@ export function MapView({
     } : null;
 
     const features = visibleCafes.map((cafe) => {
+      const hasKnownSunStatus = Object.prototype.hasOwnProperty.call(sunRemainingRef.current, cafe.id);
       const inViewport = !vp || (
         cafe.lat >= vp.south && cafe.lat <= vp.north &&
         cafe.lng >= vp.west  && cafe.lng <= vp.east
@@ -388,7 +392,9 @@ export function MapView({
       }
 
       let inShadow: boolean;
-      if (!inViewport || sunPos.altitudeDeg <= 0) {
+      if (hasKnownSunStatus) {
+        inShadow = sunRemainingRef.current[cafe.id] === null;
+      } else if (!inViewport || sunPos.altitudeDeg <= 0) {
         inShadow = true;
       } else {
         const LAT_MAX = 200 / 111_000;
