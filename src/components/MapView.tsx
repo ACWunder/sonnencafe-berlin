@@ -919,7 +919,7 @@ export function MapView({
     map.easeTo({
       center: [selectedCafe.lng, selectedCafe.lat],
       // Map clicks keep current zoom; list selections zoom to 18
-      zoom: fromMap ? map.getZoom() : 17,
+      zoom: fromMap ? map.getZoom() : 16,
       duration: 500,
     });
   }, [selectedCafe]);
@@ -931,7 +931,7 @@ export function MapView({
     // Skip the generic district flyTo when a specific café is already selected
     // (happens on cross-district café clicks: selectedCafe effect handles panning).
     if (config && !selectedCafeRef.current) {
-      mapInstanceRef.current.flyTo({ center: config.center, zoom: 14.5, duration: 800 });
+      mapInstanceRef.current.flyTo({ center: config.center, zoom: 16, duration: 800 });
     }
     loadDistrictBuildings(activeDistrict);
     // eslint-disable-next-line react-hooks/exhaustive-deps
