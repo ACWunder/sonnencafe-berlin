@@ -829,13 +829,11 @@ function SelectedCafeCard({
           : "bg-gradient-to-b from-zinc-200 via-zinc-100 to-white"
       }`}>
         <div className="min-w-0">
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <h2 className="font-display font-bold text-zinc-900 text-[15px] leading-tight">
-              {cafe.name}
-            </h2>
+          <h2 className="font-display font-bold text-zinc-900 text-[15px] leading-tight">
+            {cafe.name}
             {openStatus !== null && (
               <span
-                className={`text-[8px] font-body font-semibold shrink-0 leading-none whitespace-nowrap ${openStatus ? "" : "text-red-400"}`}
+                className={`inline-block align-middle ml-2 text-[8px] font-body font-semibold whitespace-nowrap leading-none ${openStatus ? "" : "text-red-400"}`}
                 style={openStatus ? { color: "#00cd00" } : undefined}
               >
                 {openStatus ? "geöffnet" : "geschlossen"}
@@ -844,7 +842,7 @@ function SelectedCafeCard({
                 )}
               </span>
             )}
-          </div>
+          </h2>
           {(cafe.address || cafe.district) && (
             <div className="flex items-center gap-1 mt-1">
               <MapPin className="w-3 h-3 text-zinc-400 shrink-0" />
