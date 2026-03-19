@@ -175,25 +175,18 @@ export default function Home() {
   const [restaurantsLoading, setRestaurantsLoading] = useState(false);
   const restaurantsFetchedRef = useRef(false);
 
-  // Fetch restaurants in the background on mount so they're always searchable,
-  // regardless of whether the toggle is on.
+  // Fetch restaurants on mount so they're always available for search.
+  // Also used when the toggle is switched on.
   useEffect(() => {
     if (restaurantsFetchedRef.current) return;
     restaurantsFetchedRef.current = true;
+    setRestaurantsLoading(true);
     fetch("/api/restaurants")
       .then((r) => r.json())
       .then((d) => setRestaurants(d.restaurants ?? []))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setRestaurantsLoading(false));
   }, []);
-
-  // Show loading indicator only when the toggle is first switched on and data isn't ready yet
-  useEffect(() => {
-    if (includeRestaurants && restaurants.length === 0 && restaurantsFetchedRef.current) {
-      setRestaurantsLoading(true);
-    } else {
-      setRestaurantsLoading(false);
-    }
-  }, [includeRestaurants, restaurants.length]);
 
   const districtFilteredCafes = useMemo(() => {
     const all = includeRestaurants ? [...cafes, ...restaurants] : cafes;
