@@ -844,7 +844,9 @@ export function MapView({
   useEffect(() => {
     if (!mapInstanceRef.current || !mapReadyRef.current) return;
     const config = DISTRICT_CONFIG[activeDistrict];
-    if (config) {
+    // Skip the generic district flyTo when a specific café is already selected
+    // (happens on cross-district café clicks: selectedCafe effect handles panning).
+    if (config && !selectedCafeRef.current) {
       mapInstanceRef.current.flyTo({ center: config.center, zoom: 14.5, duration: 800 });
     }
     loadDistrictBuildings(activeDistrict);
