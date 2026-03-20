@@ -466,10 +466,16 @@ export default function Home() {
           type="time"
           value={timeState.time}
           onChange={(e) => {
+            if (hasTimeSlider) return;
             setIsCafeSymbolsUpdating(true);
             setTimeState((s) => ({ ...s, time: e.target.value }));
           }}
-          className="text-[11px] font-body text-zinc-600 border border-zinc-200 rounded-[8px] px-2 py-1 bg-zinc-50/80 focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-300 transition-all cursor-pointer min-w-0 shrink"
+          readOnly={hasTimeSlider}
+          className={`text-[11px] font-body border rounded-[8px] px-2 py-1 min-w-0 shrink transition-all ${
+            hasTimeSlider
+              ? "font-bold text-zinc-800 border-zinc-200 bg-zinc-50/80 pointer-events-none cursor-default"
+              : "text-zinc-600 border-zinc-200 bg-zinc-50/80 focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-300 cursor-pointer"
+          }`}
         />
 
         {/* Now button — icon only on mobile, icon+text on desktop */}
@@ -743,7 +749,7 @@ export default function Home() {
           />
 
           {hasTimeSlider && (
-            <div className="pointer-events-none absolute left-3 right-3 top-4 z-[620] md:top-5">
+            <div className="pointer-events-none absolute left-3 right-3 top-3 z-[620] md:top-3">
               <div className="min-w-0">
                 <div className="rounded-[18px] border border-zinc-100 bg-white/90 px-2.5 py-0.5 shadow-lg shadow-zinc-200/40 backdrop-blur-xl">
                   <div className="pr-0">
@@ -759,7 +765,7 @@ export default function Home() {
                       aria-label="Uhrzeit zwischen Sonnenaufgang und Sonnenuntergang"
                     />
                   </div>
-                  <div className="-mt-1.5 flex items-center justify-between px-0.5 text-[11px] font-medium text-orange-500/95">
+                  <div className="-mt-3 flex items-center justify-between px-0.5 text-[11px] font-medium text-orange-500/95">
                     <span>{formatMinuteLabel(sunriseTime)}</span>
                     <span>{formatMinuteLabel(sunsetTime)}</span>
                   </div>
@@ -770,7 +776,21 @@ export default function Home() {
 
           {isCafeSymbolsUpdating && (
             <div className="pointer-events-none absolute inset-0 z-[650] flex items-center justify-center">
-              <div className="h-12 w-12 animate-spin rounded-full border-[3px] border-amber-200/90 border-t-amber-400" />
+              <svg className="animate-spin h-12 w-12" viewBox="0 0 48 48" fill="none">
+                <defs>
+                  <linearGradient id="spinner-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.85" />
+                    <stop offset="100%" stopColor="#ea580c" stopOpacity="0.85" />
+                  </linearGradient>
+                </defs>
+                <circle
+                  cx="24" cy="24" r="19"
+                  stroke="url(#spinner-gradient)"
+                  strokeWidth="5"
+                  strokeLinecap="round"
+                  strokeDasharray="88 31"
+                />
+              </svg>
             </div>
           )}
 
@@ -778,7 +798,7 @@ export default function Home() {
           <button
             onClick={() => { setSidebarOpen(true); setSelectedCafe(null); }}
             className={`md:hidden absolute left-3 z-[500] w-[56px] h-[56px] bg-white/90 backdrop-blur-xl rounded-full border border-zinc-100 shadow-lg shadow-zinc-200/40 flex items-center justify-center text-zinc-500 ${
-              hasTimeSlider ? "top-[80px]" : "top-3"
+              hasTimeSlider ? "top-[72px]" : "top-3"
             }`}
           >
             <Menu className="w-5 h-5" />
@@ -789,7 +809,7 @@ export default function Home() {
             ref={filterButtonRef}
             onClick={() => { setShowFilter((v) => !v); setSelectedCafe(null); }}
             className={`absolute left-3 z-[500] w-[56px] h-[56px] backdrop-blur-xl rounded-full shadow-lg shadow-zinc-200/40 flex items-center justify-center ${
-              hasTimeSlider ? "top-[148px]" : "top-20"
+              hasTimeSlider ? "top-[140px]" : "top-20"
             } ${includeRestaurants ? "bg-amber-400 border border-amber-300 text-white" : "bg-white/90 border border-zinc-100 text-zinc-500"}`}
             title="Bezirk wählen"
           >
@@ -799,7 +819,7 @@ export default function Home() {
           {/* Filter panel — single-select */}
           {showFilter && (
             <div ref={filterPanelRef} className={`absolute left-3 z-[502] w-52 bg-white/95 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-xl shadow-zinc-200/50 overflow-hidden ${
-              hasTimeSlider ? "top-[216px]" : "top-36"
+              hasTimeSlider ? "top-[208px]" : "top-36"
             }`}>
                 <div className="pl-3.5 pr-3.5 pt-2.5 pb-2">
                   <span className="text-[10px] font-body font-bold uppercase tracking-widest text-zinc-400">Bezirk</span>
