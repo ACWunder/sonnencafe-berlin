@@ -3,7 +3,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { Cafe, TimeState, SunTimeline, SunTimelineData } from "@/types";
+import type { Cafe, TimeState, SunTimelineData } from "@/types";
 import { getSunPosition, getSunTimes } from "@/lib/sun";
 import { calcShadowPolygon } from "@/lib/buildingShadow";
 import type { BuildingFeature } from "@/app/api/buildings/route";
@@ -165,103 +165,8 @@ interface MapViewProps {
   activeDistrict: string;
 }
 
-// ─── sun computation (unchanged) ─────────────────────────────────────────────
-
-function calcSunRemaining(
-  cafe: Cafe,
-  currentDate: Date,
-  buildings: BuildingFeature[],
-): number | null {
-  const STEP_MS   = 10 * 60 * 1000;
-  const MAX_STEPS = 24;
-  const OFFSET_M  = 10;
-  const LAT_MAX   = 200 / 111_000;
-  const LNG_MAX   = 200 / (111_000 * Math.cos((cafe.lat * Math.PI) / 180));
-
-  // Hard cap: result can never exceed actual minutes until sunset
-  const sunTimes = getSunTimes(cafe.lat, cafe.lng, currentDate);
-  const minsUntilSunset = Math.max(0, Math.floor((sunTimes.sunset.getTime() - currentDate.getTime()) / 60_000));
-  if (minsUntilSunset === 0) return null;
-
-  const nearby = buildings.filter((b) => {
-    const [bLat, bLng] = b.polygon[0];
-    return Math.abs(bLat - cafe.lat) < LAT_MAX && Math.abs(bLng - cafe.lng) < LNG_MAX;
-  });
-
-  for (let step = 0; step <= MAX_STEPS; step++) {
-    const date   = new Date(currentDate.getTime() + step * STEP_MS);
-    const sunPos = getSunPosition(cafe.lat, cafe.lng, date);
-    if (sunPos.altitudeDeg <= 0) return step === 0 ? null : Math.min((step - 1) * 10, minsUntilSunset);
-
-    const azRad  = (sunPos.azimuthDeg * Math.PI) / 180;
-    const dlat   = (OFFSET_M * Math.cos(azRad)) / 111_000;
-    const dlng   = (OFFSET_M * Math.sin(azRad)) / (111_000 * Math.cos((cafe.lat * Math.PI) / 180));
-    const chkLat = cafe.lat + dlat;
-    const chkLng = cafe.lng + dlng;
-
-    const inShadow = nearby.some((b) => {
-      const poly = calcShadowPolygon(b.polygon, b.height ?? FALLBACK_HEIGHT, sunPos.altitudeDeg, sunPos.azimuthDeg);
-      return poly.length >= 3 && pointInPolygon(chkLat, chkLng, poly);
-    });
-    if (inShadow) return step === 0 ? null : Math.min((step - 1) * 10, minsUntilSunset);
-  }
-  return Math.min(MAX_STEPS * 10, minsUntilSunset);
-}
-
-function calcDayTimeline(
-  cafe: Cafe,
-  date: Date,
-  buildings: BuildingFeature[],
-): SunTimeline {
-  const INTERVAL_MIN = 20;
-  const OFFSET_M     = 10;
-  const LAT_MAX      = 200 / 111_000;
-  const LNG_MAX      = 200 / (111_000 * Math.cos((cafe.lat * Math.PI) / 180));
-
-  const nearby = buildings.filter((b) => {
-    const [bLat, bLng] = b.polygon[0];
-    return Math.abs(bLat - cafe.lat) < LAT_MAX && Math.abs(bLng - cafe.lng) < LNG_MAX;
-  });
-
-  const times       = getSunTimes(cafe.lat, cafe.lng, date);
-  const startMinute = times.sunrise.getHours() * 60 + times.sunrise.getMinutes();
-  const endMinute   = times.sunset.getHours()  * 60 + times.sunset.getMinutes();
-  const inSun: boolean[] = [];
-
-  for (let minute = startMinute; minute <= endMinute; minute += INTERVAL_MIN) {
-    const slotDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(),
-      Math.floor(minute / 60), minute % 60, 0, 0);
-    const sunPos = getSunPosition(cafe.lat, cafe.lng, slotDate);
-    if (sunPos.altitudeDeg <= 0) { inSun.push(false); continue; }
-
-    const azRad  = (sunPos.azimuthDeg * Math.PI) / 180;
-    const dlat   = (OFFSET_M * Math.cos(azRad)) / 111_000;
-    const dlng   = (OFFSET_M * Math.sin(azRad)) / (111_000 * Math.cos((cafe.lat * Math.PI) / 180));
-    const chkLat = cafe.lat + dlat;
-    const chkLng = cafe.lng + dlng;
-
-    const inShadow = nearby.some((b) => {
-      const poly = calcShadowPolygon(b.polygon, b.height ?? FALLBACK_HEIGHT, sunPos.altitudeDeg, sunPos.azimuthDeg);
-      return poly.length >= 3 && pointInPolygon(chkLat, chkLng, poly);
-    });
-    inSun.push(!inShadow);
-  }
-
-  return { inSun, startMinute, intervalMin: INTERVAL_MIN };
-}
-
-function pointInPolygon(lat: number, lng: number, poly: [number, number][]): boolean {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const [lati, lngi] = poly[i];
-    const [latj, lngj] = poly[j];
-    if ((lngi > lng) !== (lngj > lng) &&
-        lat < ((latj - lati) * (lng - lngi)) / (lngj - lngi) + lati) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
+// Sun computation has moved to src/workers/sun.worker.ts.
+// MapView dispatches compute jobs via postMessage; results come back via onmessage.
 
 // ─── shadow canvas renderer ───────────────────────────────────────────────────
 // Draws all shadow polygons onto a single canvas with one ctx.fill() call.
@@ -367,7 +272,6 @@ export function MapView({
   const buildingCacheRef   = useRef<Map<number, BuildingFeature>>(new Map());
   // Persistent per-district building cache so district switches are instant after first load
   const districtBuildingCacheRef = useRef<Map<string, BuildingFeature[]>>(new Map());
-  const sunGenRef          = useRef(0);
   const currentBoundsRef   = useRef<DistrictBounds>(DISTRICT_CONFIG["Mitte"].bounds);
   const activeDistrictRef  = useRef(activeDistrict);
   activeDistrictRef.current = activeDistrict;
@@ -398,6 +302,12 @@ export function MapView({
   timeStateRef.current    = timeState;
   // Cache: cafe id → inShadow, so selection changes don't recompute shadows
   const shadowCacheRef       = useRef<Map<string, boolean>>(new Map());
+
+  // Sun computation worker — runs calcSunRemaining + calcDayTimeline off-thread.
+  // Pend-drop pattern: only one compute in flight; latest pending dispatched when done.
+  const sunWorkerRef           = useRef<Worker | null>(null);
+  const sunComputeInFlightRef  = useRef(false);
+  const pendingSunComputeRef   = useRef<{ cafes: Cafe[]; date: string; time: string } | null>(null);
 
   const [, setFetching]  = useState(false);
 
@@ -434,6 +344,20 @@ export function MapView({
       sunDataTimeoutRef.current = null;
       updateCafesSource(true);
     }, delay);
+  }
+
+  function dispatchSunCompute(cafes: Cafe[], date: string, time: string) {
+    const worker = sunWorkerRef.current;
+    if (!worker) return;
+    pendingSunComputeRef.current = { cafes, date, time };
+    if (!sunComputeInFlightRef.current) {
+      const next = pendingSunComputeRef.current;
+      pendingSunComputeRef.current = null;
+      if (next) {
+        sunComputeInFlightRef.current = true;
+        worker.postMessage({ type: "compute", cafes: next.cafes, date: next.date, time: next.time });
+      }
+    }
   }
 
   function dispatchShadowRender(ts: TimeState) {
@@ -480,95 +404,18 @@ export function MapView({
 
     if (!recomputeSunData) return;
 
-    // Heavy computation: sun-remaining + day timeline for cafés.
-    // Uses requestIdleCallback so chunks only run when the browser is idle,
-    // keeping map gestures smooth. Generation counter cancels stale runs.
+    // Dispatch to background worker — no main-thread computation, no idle scheduling.
     const ts = timeStateRef.current;
-    const currentDate = new Date(`${ts.date}T${ts.time}:00`);
-    const dayDate     = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), 12, 0, 0);
-    const chunkBounds = map.getBounds();
-    const chunkVp = chunkBounds ? {
-      south: chunkBounds.getSouth() - 0.02,
-      north: chunkBounds.getNorth() + 0.02,
-      west:  chunkBounds.getWest()  - 0.02,
-      east:  chunkBounds.getEast()  + 0.02,
-    } : null;
-    const visible = visibleCafes.filter((c) => !chunkVp || (
-      c.lat >= chunkVp.south && c.lat <= chunkVp.north &&
-      c.lng >= chunkVp.west  && c.lng <= chunkVp.east
-    ));
-    const offscreen = visibleCafes.filter((c) => chunkVp && !(
-      c.lat >= chunkVp.south && c.lat <= chunkVp.north &&
-      c.lng >= chunkVp.west  && c.lng <= chunkVp.east
-    ));
-    const allCafes = [...visible, ...offscreen];
-
-    // Incremental mode: skip cafés whose sun data is already cached at this time.
     const cafesToCompute = incrementalOnly
-      ? allCafes.filter((c) => !Object.prototype.hasOwnProperty.call(sunRemainingRef.current, c.id))
-      : allCafes;
+      ? visibleCafes.filter((c) => !Object.prototype.hasOwnProperty.call(sunRemainingRef.current, c.id))
+      : visibleCafes;
 
-    // Nothing new to compute — settle immediately with existing data.
     if (cafesToCompute.length === 0) {
       onSunDataSettledRef.current?.();
       return;
     }
 
-    // Seed with existing results so the merged output includes all visible cafés.
-    const remaining: Record<string, number | null> = incrementalOnly
-      ? { ...sunRemainingRef.current }
-      : {};
-    const timelines: SunTimelineData = {};
-    const CHUNK = 15;
-    let idx = 0;
-    const gen = ++sunGenRef.current;
-
-    const schedule = (fn: () => void) =>
-      typeof requestIdleCallback !== "undefined"
-        ? requestIdleCallback(fn, { timeout: 3000 })
-        : setTimeout(fn, 16);
-
-    function processChunk() {
-      if (sunGenRef.current !== gen) return;
-      const end = Math.min(idx + CHUNK, cafesToCompute.length);
-      for (; idx < end; idx++) {
-        const cafe = cafesToCompute[idx];
-        const nearbyForCafe = buildingGridRef.current?.getNearby(cafe.lat, cafe.lng)
-          ?? Array.from(buildingCacheRef.current.values());
-        remaining[cafe.id] = calcSunRemaining(cafe, currentDate, nearbyForCafe);
-        timelines[cafe.id] = calcDayTimeline(cafe, dayDate, nearbyForCafe);
-      }
-      if (idx < cafesToCompute.length) {
-        schedule(processChunk);
-      } else {
-        onSunRemainingRef.current(remaining);
-        onSunTimelineRef.current(timelines);
-        // Sync shadow cache with accurate results.
-        for (const cafe of cafesToCompute) {
-          shadowCacheRef.current.set(cafe.id, remaining[cafe.id] === null);
-        }
-
-        const source = mapInstanceRef.current?.getSource("cafes-source");
-        if (source && mapReadyRef.current) {
-          const selId = selectedCafeRef.current?.id ?? null;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (source as any).setData({
-            type: "FeatureCollection",
-            features: visibleCafes.map((cafe) => ({
-              type: "Feature",
-              geometry: { type: "Point", coordinates: [cafe.lng, cafe.lat] },
-              properties: {
-                id: cafe.id, name: cafe.name,
-                inShadow: remaining[cafe.id] === null,
-                isSelected: cafe.id === selId,
-              },
-            })),
-          });
-        }
-        onSunDataSettledRef.current?.();
-      }
-    }
-    schedule(processChunk);
+    dispatchSunCompute(cafesToCompute, ts.date, ts.time);
   }
 
   // Render shadow canvas and push it to the MapLibre image source.
@@ -605,14 +452,14 @@ export function MapView({
     const canvas = shadowCanvasRef.current;
     if (canvas) { canvas.width = w; canvas.height = h; }
     currentBoundsRef.current = config.bounds;
-    sunGenRef.current++;
 
     buildingCacheRef.current.clear();
     buildings.forEach((b) => buildingCacheRef.current.set(b.id, b));
     buildingGridRef.current = new BuildingGrid(buildings);
 
-    // Send buildings to shadow worker so it has them ready for render calls
+    // Send buildings to both workers so they have them ready
     shadowWorkerRef.current?.postMessage({ type: 'init', buildings });
+    sunWorkerRef.current?.postMessage({ type: 'init', buildings });
 
     const map = mapInstanceRef.current;
     if (!map || !mapReadyRef.current) return;
@@ -726,6 +573,60 @@ export function MapView({
         const nextTime = pendingShadowTimeRef.current;
         pendingShadowTimeRef.current = null;
         if (nextTime) dispatchShadowRender(nextTime);
+      };
+    }
+
+    // Create sun computation worker
+    const sunWorker = typeof window !== 'undefined'
+      ? new Worker(new URL('../workers/sun.worker.ts', import.meta.url))
+      : null;
+    sunWorkerRef.current = sunWorker;
+
+    if (sunWorker) {
+      sunWorker.onmessage = (e: MessageEvent) => {
+        if (e.data.type !== 'computed') return;
+        sunComputeInFlightRef.current = false;
+
+        const { remaining, timelines } = e.data as {
+          remaining: Record<string, number | null>;
+          timelines: import('@/types').SunTimelineData;
+        };
+
+        onSunRemainingRef.current(remaining);
+        onSunTimelineRef.current(timelines);
+        for (const [id, val] of Object.entries(remaining))
+          shadowCacheRef.current.set(id, val === null);
+
+        // Rebuild map source with accurate shadow state
+        const map = mapInstanceRef.current;
+        const src  = map?.getSource('cafes-source');
+        if (src && mapReadyRef.current) {
+          const selId    = selectedCafeRef.current?.id ?? null;
+          const visIds   = visibleCafeIdsRef.current;
+          const allCafes = cafesRef.current.filter((c) => !visIds || visIds.has(c.id));
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (src as any).setData({
+            type: 'FeatureCollection',
+            features: allCafes.map((cafe) => ({
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [cafe.lng, cafe.lat] },
+              properties: {
+                id: cafe.id, name: cafe.name,
+                inShadow: remaining[cafe.id] === null,
+                isSelected: cafe.id === selId,
+              },
+            })),
+          });
+        }
+        onSunDataSettledRef.current?.();
+
+        // Drain pending request
+        const next = pendingSunComputeRef.current;
+        pendingSunComputeRef.current = null;
+        if (next) {
+          sunComputeInFlightRef.current = true;
+          sunWorker.postMessage({ type: 'compute', cafes: next.cafes, date: next.date, time: next.time });
+        }
       };
     }
 
@@ -982,6 +883,8 @@ export function MapView({
       pendingShadowTimeRef.current = null;
       shadowWorkerRef.current?.terminate();
       shadowWorkerRef.current = null;
+      sunWorkerRef.current?.terminate();
+      sunWorkerRef.current = null;
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
