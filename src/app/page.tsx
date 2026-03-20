@@ -1,11 +1,11 @@
 // src/app/page.tsx
 "use client";
 
-import { useState, useEffect, useMemo, useRef, useCallback, useDeferredValue } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, useDeferredValue, startTransition } from "react";
 import { format } from "date-fns";
 import { Sun, Search, MapPin, X, ExternalLink, Info, Menu, SlidersHorizontal } from "lucide-react";
 import type { Cafe, TimeState, SunTimeline, SunTimelineData } from "@/types";
-import { MapView } from "@/components/MapView";
+import { MapView, type MapViewShadowHandle } from "@/components/MapView";
 import { InstallBanner } from "@/components/InstallBanner";
 import { isRestaurantType } from "@/lib/overpass";
 import { getSunTimes } from "@/lib/sun";
@@ -210,6 +210,9 @@ export default function Home() {
     return { date: format(now, "yyyy-MM-dd"), time: format(now, "HH:mm") };
   });
   const [isCafeSymbolsUpdating, setIsCafeSymbolsUpdating] = useState(true);
+  const timeStateRef = useRef(timeState);
+  timeStateRef.current = timeState;
+  const shadowHandleRef = useRef<MapViewShadowHandle | null>(null);
   const [selectedTime, setSelectedTime] = useState<number | null>(null);
   const [sunriseTime, setSunriseTime] = useState<number | null>(null);
   const [sunsetTime, setSunsetTime] = useState<number | null>(null);
@@ -386,15 +389,26 @@ export default function Home() {
     setSelectedTime((prev) => (prev === currentMinute ? prev : currentMinute));
   }, [activeDistrict, sunLocation, timeState.date, timeState.time]);
 
+  // Direct shadow update — bypasses React state for instant visual response.
+  const handleSliderShadow = useCallback((minute: number) => {
+    if (sunriseTime === null || sunsetTime === null) return;
+    const nextTime = minuteToTime(clampMinute(minute, sunriseTime, sunsetTime));
+    shadowHandleRef.current?.updateShadow({ date: timeStateRef.current.date, time: nextTime });
+  }, [sunriseTime, sunsetTime]);
+
+  // React state update — setSelectedTime is urgent (slider thumb position),
+  // setTimeState + spinner are deferred so React can skip intermediate renders.
   const handleSliderTimeChange = useCallback((minute: number) => {
     if (sunriseTime === null || sunsetTime === null) return;
     const nextMinute = clampMinute(minute, sunriseTime, sunsetTime);
     const nextTime = minuteToTime(nextMinute);
-    setIsCafeSymbolsUpdating(true);
     setSelectedTime(nextMinute);
-    setTimeState((prev) => (
-      prev.time === nextTime ? prev : { ...prev, time: nextTime }
-    ));
+    startTransition(() => {
+      setIsCafeSymbolsUpdating(true);
+      setTimeState((prev) => (
+        prev.time === nextTime ? prev : { ...prev, time: nextTime }
+      ));
+    });
   }, [sunriseTime, sunsetTime]);
 
   const filtered = useMemo(() => {
@@ -765,6 +779,7 @@ export default function Home() {
             onCafeSelect={handleCafeSelect}
             onSunRemaining={handleSunRemaining}
             onSunTimeline={handleSunTimeline}
+            shadowHandleRef={shadowHandleRef}
             onSunDataSettled={() => setIsCafeSymbolsUpdating(false)}
             activeDistrict={activeDistrict}
           />
@@ -780,8 +795,8 @@ export default function Home() {
                       max={sunsetTime}
                       step={1}
                       value={sliderMinute}
+                      onInput={(e) => handleSliderShadow(Number((e.target as HTMLInputElement).value))}
                       onChange={(e) => handleSliderTimeChange(Number(e.target.value))}
-                      onInput={(e) => handleSliderTimeChange(Number((e.target as HTMLInputElement).value))}
                       className="sun-time-slider pointer-events-auto h-8 w-full"
                       aria-label="Uhrzeit zwischen Sonnenaufgang und Sonnenuntergang"
                     />

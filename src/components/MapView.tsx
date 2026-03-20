@@ -1,7 +1,7 @@
 // src/components/MapView.tsx
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Cafe, TimeState, SunTimeline, SunTimelineData } from "@/types";
 import { getSunPosition, getSunTimes } from "@/lib/sun";
@@ -57,7 +57,7 @@ const BERLIN_CENTER: [number, number] = [
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/bright";
 const FALLBACK_HEIGHT = 18;
-const _ZOOM16_PX = (Math.pow(2, 16) * 256) / 360; // px per degree at zoom 16
+const _ZOOM15_PX = (Math.pow(2, 15) * 256) / 360; // px per degree at zoom 15 (4× fewer pixels than zoom 16)
 
 // Per-district config: shadow canvas bounds (with border buffer for accuracy),
 // map fly-to center [lng, lat], and buildings file path.
@@ -93,8 +93,8 @@ const DISTRICT_CONFIG: Record<string, {
 
 function shadowCanvasSize(b: DistrictBounds) {
   return {
-    w: Math.ceil((b.east - b.west) * _ZOOM16_PX),
-    h: Math.ceil((b.north - b.south) * _ZOOM16_PX),
+    w: Math.ceil((b.east - b.west) * _ZOOM15_PX),
+    h: Math.ceil((b.north - b.south) * _ZOOM15_PX),
   };
 }
 
@@ -147,6 +147,10 @@ function tightenBounds(
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
+export interface MapViewShadowHandle {
+  updateShadow: (ts: TimeState) => void;
+}
+
 interface MapViewProps {
   timeState: TimeState;
   cafes: Cafe[];
@@ -157,6 +161,7 @@ interface MapViewProps {
   onSunRemaining: (data: Record<string, number | null>) => void;
   onSunTimeline: (data: SunTimelineData) => void;
   onSunDataSettled?: () => void;
+  shadowHandleRef?: React.MutableRefObject<MapViewShadowHandle | null>;
   activeDistrict: string;
 }
 
@@ -346,7 +351,7 @@ function loadSunEmoji(map: any, onReady: () => void) {
 
 export function MapView({
   timeState, cafes, visibleCafeIds, sunRemaining, selectedCafe, onCafeSelect, onSunRemaining, onSunTimeline,
-  onSunDataSettled, activeDistrict,
+  onSunDataSettled, shadowHandleRef, activeDistrict,
 }: MapViewProps) {
   const mapRef         = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -396,6 +401,24 @@ export function MapView({
 
   const [, setFetching]  = useState(false);
 
+  // Internal ref always pointing to the latest shadow-update closure.
+  // Exposed via shadowHandleRef so callers can bypass the React cycle.
+  const shadowUpdateFnRef = useRef<((ts: TimeState) => void) | null>(null);
+  shadowUpdateFnRef.current = (ts: TimeState) => {
+    const canvas = shadowCanvasRef.current;
+    const worker = shadowWorkerRef.current;
+    if (!canvas || !worker) return;
+    pendingShadowTimeRef.current = ts;
+    if (!shadowRenderInFlightRef.current) {
+      const next = pendingShadowTimeRef.current;
+      pendingShadowTimeRef.current = null;
+      if (next) dispatchShadowRender(next);
+    }
+  };
+  if (shadowHandleRef) {
+    shadowHandleRef.current = { updateShadow: shadowUpdateFnRef.current };
+  }
+
   // ── helpers ────────────────────────────────────────────────────────────────
 
   function clearScheduledSunData() {
@@ -405,7 +428,7 @@ export function MapView({
     }
   }
 
-  function scheduleSunDataRefresh(delay = 180) {
+  function scheduleSunDataRefresh(delay = 500) {
     clearScheduledSunData();
     sunDataTimeoutRef.current = window.setTimeout(() => {
       sunDataTimeoutRef.current = null;
@@ -854,6 +877,9 @@ export function MapView({
           type: "circle",
           source: "cafes-source",
           filter: ["==", ["get", "inShadow"], true],
+          layout: {
+            "circle-sort-key": ["case", ["get", "isSelected"], 1, 0],
+          },
           paint: {
             "circle-radius": [
               "interpolate", ["linear"], ["zoom"],
@@ -889,6 +915,7 @@ export function MapView({
               "icon-allow-overlap": true,
               "icon-ignore-placement": true,
               "icon-anchor": "center",
+              "symbol-sort-key": ["case", ["get", "isSelected"], 1, 0],
             },
           }, before);
         });
