@@ -428,14 +428,19 @@ export default function Home() {
   const handleCafeSelect = useCallback((cafe: Cafe | null) => {
     setSelectedCafe(cafe);
     if (!cafe) return;
-    if (cafe.district && (ALL_DISTRICTS as readonly string[]).includes(cafe.district)) {
+    let filterChanged = false;
+    // Switch district only if the cafe is in a different district
+    if (cafe.district && (ALL_DISTRICTS as readonly string[]).includes(cafe.district) && cafe.district !== activeDistrict) {
+      setIsCafeSymbolsUpdating(true);
       setActiveDistrict(cafe.district);
+      filterChanged = true;
     }
-    // If it's a restaurant/bar, enable the toggle so it appears on the map
-    if (isRestaurantType(cafe.tags)) {
+    // Enable restaurants only if currently hidden
+    if (!includeRestaurants && isRestaurantType(cafe.tags)) {
+      if (!filterChanged) setIsCafeSymbolsUpdating(true);
       setIncludeRestaurants(true);
     }
-  }, []);
+  }, [activeDistrict, includeRestaurants]);
 
   const currentMinute = (() => {
     const [h, m] = timeState.time.split(":").map(Number);
