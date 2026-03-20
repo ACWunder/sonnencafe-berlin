@@ -209,13 +209,15 @@ export default function Home() {
     const now = new Date();
     return { date: format(now, "yyyy-MM-dd"), time: format(now, "HH:mm") };
   });
-  const [isCafeSymbolsUpdating, setIsCafeSymbolsUpdating] = useState(false);
+  const [isCafeSymbolsUpdating, setIsCafeSymbolsUpdating] = useState(true);
   const [selectedTime, setSelectedTime] = useState<number | null>(null);
   const [sunriseTime, setSunriseTime] = useState<number | null>(null);
   const [sunsetTime, setSunsetTime] = useState<number | null>(null);
 
   const [cafes, setCafes] = useState<Cafe[]>([]);
   const [selectedCafe, setSelectedCafe] = useState<Cafe | null>(null);
+  const [displayCafe, setDisplayCafe] = useState<Cafe | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
   const [search, setSearch] = useState("");
   const [sunRemaining, setSunRemaining] = useState<Record<string, number | null>>({});
   const [sunTimelines, setSunTimelines] = useState<SunTimelineData>({});
@@ -251,6 +253,19 @@ export default function Home() {
     ),
     [cafes, activeDistrict, includeRestaurants],
   );
+
+  // Keep displayCafe in sync: update immediately on new selection,
+  // but delay clearing so the card can animate out while the marker
+  // already starts shrinking (selectedCafe=null fires immediately).
+  useEffect(() => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    if (selectedCafe !== null) {
+      setDisplayCafe(selectedCafe);
+    } else {
+      closeTimerRef.current = window.setTimeout(() => setDisplayCafe(null), 240);
+    }
+    return () => { if (closeTimerRef.current) clearTimeout(closeTimerRef.current); };
+  }, [selectedCafe]);
 
   // Tap-to-close filter panel: close on short tap on map, not on drag/zoom
   useEffect(() => {
@@ -324,7 +339,7 @@ export default function Home() {
   }, []);
 
   const handleSunTimeline = useCallback((data: SunTimelineData) => {
-    setSunTimelines(data);
+    setSunTimelines((prev) => ({ ...prev, ...data }));
   }, []);
 
   useEffect(() => {
@@ -660,14 +675,15 @@ export default function Home() {
 
         {/* Desktop sidebar — hidden on mobile */}
         <aside className="hidden md:flex w-80 shrink-0 flex-col bg-white overflow-hidden" style={{ boxShadow: '1px 0 0 0 #f4f4f5, 4px 0 16px 0 rgba(0,0,0,0.03)' }}>
-          {selectedCafe && (
+          {displayCafe && (
             <SelectedCafeCard
-              cafe={selectedCafe}
-              mins={sunRemaining[selectedCafe.id]}
-              timeline={sunTimelines[selectedCafe.id]}
+              cafe={displayCafe}
+              mins={sunRemaining[displayCafe.id]}
+              timeline={sunTimelines[displayCafe.id]}
               currentMinute={currentMinute}
               currentDate={currentDate}
               onClose={() => setSelectedCafe(null)}
+              isClosingOverride={selectedCafe === null}
             />
           )}
           <div className="px-3 pt-3 pb-2 shrink-0">
@@ -775,8 +791,8 @@ export default function Home() {
           )}
 
           {isCafeSymbolsUpdating && (
-            <div className="pointer-events-none absolute inset-0 z-[650] flex items-center justify-center">
-              <svg className="animate-spin h-12 w-12" viewBox="0 0 48 48" fill="none">
+            <div className="pointer-events-none absolute inset-0 z-[490] flex items-center justify-center">
+              <svg className="animate-spin h-16 w-16" viewBox="0 0 64 64" fill="none">
                 <defs>
                   <linearGradient id="spinner-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
                     <stop offset="0%" stopColor="#fbbf24" stopOpacity="0.85" />
@@ -784,11 +800,11 @@ export default function Home() {
                   </linearGradient>
                 </defs>
                 <circle
-                  cx="24" cy="24" r="19"
+                  cx="32" cy="32" r="25"
                   stroke="url(#spinner-gradient)"
-                  strokeWidth="5"
+                  strokeWidth="6"
                   strokeLinecap="round"
-                  strokeDasharray="88 31"
+                  strokeDasharray="110 47"
                 />
               </svg>
             </div>
@@ -830,7 +846,7 @@ export default function Home() {
                     return (
                       <button
                         key={d}
-                        onClick={() => { setActiveDistrict(d); setShowFilter(false); setSelectedCafe(null); }}
+                        onClick={() => { setIsCafeSymbolsUpdating(true); setActiveDistrict(d); setShowFilter(false); setSelectedCafe(null); }}
                         className={`w-full text-left flex items-center gap-2.5 px-3.5 py-2.5 transition-colors ${active ? "bg-amber-50" : "hover:bg-zinc-50 active:bg-zinc-100"}`}
                       >
                         <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${active ? "border-amber-400" : "border-zinc-200"}`}>
@@ -844,7 +860,7 @@ export default function Home() {
                 <div className="border-t border-zinc-100 px-3.5 pt-2.5 pb-2.5">
                   <span className="text-[10px] font-body font-bold uppercase tracking-widest text-zinc-400">Typ</span>
                   <button
-                    onClick={() => { setIncludeRestaurants((v) => !v); setSelectedCafe(null); }}
+                    onClick={() => { setIsCafeSymbolsUpdating(true); setIncludeRestaurants((v) => !v); setSelectedCafe(null); }}
                     className="w-full text-left flex items-center gap-2.5 px-0 py-2.5 transition-colors hover:bg-zinc-50 active:bg-zinc-100 rounded-lg"
                   >
                     <span className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all ${includeRestaurants ? "border-amber-400 bg-amber-400" : "border-zinc-200"}`}>
@@ -859,9 +875,9 @@ export default function Home() {
           )}
 
           {/* Mobile: floating cafe card — fixed, right-aligned, same bottom as legend */}
-          {selectedCafe && (
+          {displayCafe && (
             <div
-              className="md:hidden fixed z-[9999] mobile-cafe-card-enter"
+              className={`md:hidden fixed z-[9999] ${selectedCafe === null ? "mobile-cafe-card-leave" : "mobile-cafe-card-enter"}`}
               style={{ bottom: "12px", left: "max(0px, calc((100vw - 108px - 260px) / 2))", width: "260px" }}
               onTouchStart={(e) => { cardDragStartY.current = e.touches[0].clientY; }}
               onTouchEnd={(e) => {
@@ -870,12 +886,13 @@ export default function Home() {
               }}
             >
               <SelectedCafeCard
-                cafe={selectedCafe}
-                mins={sunRemaining[selectedCafe.id]}
-                timeline={sunTimelines[selectedCafe.id]}
+                cafe={displayCafe}
+                mins={sunRemaining[displayCafe.id]}
+                timeline={sunTimelines[displayCafe.id]}
                 currentMinute={currentMinute}
                 currentDate={currentDate}
                 onClose={() => setSelectedCafe(null)}
+                isClosingOverride={selectedCafe === null}
               />
             </div>
           )}
@@ -894,6 +911,7 @@ function SelectedCafeCard({
   currentMinute,
   currentDate,
   onClose,
+  isClosingOverride,
 }: {
   cafe: Cafe;
   mins: number | null | undefined;
@@ -901,15 +919,16 @@ function SelectedCafeCard({
   currentMinute: number;
   currentDate: Date;
   onClose: () => void;
+  isClosingOverride?: boolean;
 }) {
-  const [isClosing, setIsClosing] = useState(false);
+  const [isClosingInternal, setIsClosingInternal] = useState(false);
+  const isClosing = isClosingOverride ?? isClosingInternal;
 
-  // Cancel close animation when switching to a different cafe
-  useEffect(() => { setIsClosing(false); }, [cafe.id]);
+  // Reset internal state when switching to a different cafe
+  useEffect(() => { setIsClosingInternal(false); }, [cafe.id]);
 
   const handleClose = () => {
-    setIsClosing(true);
-    setTimeout(onClose, 170);
+    onClose(); // fires immediately so marker starts shrinking at the same time
   };
 
   const isSunny = mins !== null && mins !== undefined;

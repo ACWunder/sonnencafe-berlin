@@ -391,8 +391,10 @@ export function MapView({
   onSunDataSettledRef.current = onSunDataSettled;
   const timeStateRef      = useRef(timeState);
   timeStateRef.current    = timeState;
+  // Cache: cafe id → inShadow, so selection changes don't recompute shadows
+  const shadowCacheRef       = useRef<Map<string, boolean>>(new Map());
 
-  const [fetching,  setFetching]  = useState(false);
+  const [, setFetching]  = useState(false);
 
   // ── helpers ────────────────────────────────────────────────────────────────
 
@@ -427,72 +429,22 @@ export function MapView({
   }
 
   // Push updated café GeoJSON to the map source.
-  // recomputeSunData = true → also kick off the heavy sun-remaining/timeline
-  // computation in idle-time chunks (generation-guarded against stale runs).
-  function updateCafesSource(recomputeSunData = true) {
+  // recomputeSunData = true  → kick off sun-remaining/timeline computation.
+  // incrementalOnly = true   → only compute cafés not yet in sunRemainingRef
+  //                            (used when the visible set grows, not when time changes).
+  function updateCafesSource(recomputeSunData = true, incrementalOnly = false) {
     const map = mapInstanceRef.current;
     if (!map || !mapReadyRef.current) return;
     const source = map.getSource("cafes-source");
     if (!source) return;
 
-    const ts     = timeStateRef.current;
-    const date   = new Date(`${ts.date}T${ts.time}:00`);
-    const sunPos = getSunPosition(BERLIN_CENTER[0], BERLIN_CENTER[1], date);
-    const OFFSET_M = 10;
-    const azRad  = (sunPos.azimuthDeg * Math.PI) / 180;
-    const selId  = selectedCafeRef.current?.id ?? null;
-
-    const allBuildings = Array.from(buildingCacheRef.current.values());
-
-    // Only render cafés that are currently visible (active district + restaurant toggle).
-    // cafesRef may contain all districts; visibleCafeIdsRef is the fast filter.
-    const visibleCafes = cafesRef.current.filter((c) => visibleCafeIdsRef.current.has(c.id));
-
-    // Only run shadow check for cafés visible in the current viewport.
-    // Off-screen cafés are marked inShadow=true (dark dot) and get
-    // corrected the next time the user pans them into view (moveend).
-    const mapBounds = map.getBounds();
-    const vp = mapBounds ? {
-      south: mapBounds.getSouth() - 0.005,
-      north: mapBounds.getNorth() + 0.005,
-      west:  mapBounds.getWest()  - 0.005,
-      east:  mapBounds.getEast()  + 0.005,
-    } : null;
-
+    const selId      = selectedCafeRef.current?.id ?? null;
+    const visibleIds = visibleCafeIdsRef.current;
+    const visibleCafes = cafesRef.current.filter((c) => !visibleIds || visibleIds.has(c.id));
     const features = visibleCafes.map((cafe) => {
-      const hasKnownSunStatus = Object.prototype.hasOwnProperty.call(sunRemainingRef.current, cafe.id);
-      const inViewport = !vp || (
-        cafe.lat >= vp.south && cafe.lat <= vp.north &&
-        cafe.lng >= vp.west  && cafe.lng <= vp.east
-      );
-
-      let chkLat = cafe.lat, chkLng = cafe.lng;
-      if (sunPos.altitudeDeg > 0) {
-        const dlat = (OFFSET_M * Math.cos(azRad)) / 111_000;
-        const dlng = (OFFSET_M * Math.sin(azRad)) / (111_000 * Math.cos((cafe.lat * Math.PI) / 180));
-        chkLat = cafe.lat + dlat;
-        chkLng = cafe.lng + dlng;
-      }
-
-      let inShadow: boolean;
-      if (hasKnownSunStatus) {
-        inShadow = sunRemainingRef.current[cafe.id] === null;
-      } else if (!inViewport || sunPos.altitudeDeg <= 0) {
-        inShadow = true;
-      } else {
-        const LAT_MAX = 200 / 111_000;
-        const LNG_MAX = 200 / (111_000 * Math.cos((cafe.lat * Math.PI) / 180));
-        const nearby = buildingGridRef.current
-          ? buildingGridRef.current.getNearby(cafe.lat, cafe.lng)
-          : allBuildings.filter((b) => {
-              const [bLat, bLng] = b.polygon[0];
-              return Math.abs(bLat - cafe.lat) < LAT_MAX && Math.abs(bLng - cafe.lng) < LNG_MAX;
-            });
-        inShadow = nearby.some((b) => {
-          const poly = calcShadowPolygon(b.polygon, b.height ?? FALLBACK_HEIGHT, sunPos.altitudeDeg, sunPos.azimuthDeg);
-          return poly.length >= 3 && pointInPolygon(chkLat, chkLng, poly);
-        });
-      }
+      const inShadow = Object.prototype.hasOwnProperty.call(sunRemainingRef.current, cafe.id)
+        ? sunRemainingRef.current[cafe.id] === null
+        : (shadowCacheRef.current.get(cafe.id) ?? true);
 
       return {
         type: "Feature",
@@ -505,11 +457,10 @@ export function MapView({
 
     if (!recomputeSunData) return;
 
-    // Heavy computation: sun-remaining + day timeline for all cafés.
+    // Heavy computation: sun-remaining + day timeline for cafés.
     // Uses requestIdleCallback so chunks only run when the browser is idle,
     // keeping map gestures smooth. Generation counter cancels stale runs.
-    // Prioritise visible cafés first; out-of-viewport cafés are appended at end.
-    const buildings   = Array.from(buildingCacheRef.current.values());
+    const ts = timeStateRef.current;
     const currentDate = new Date(`${ts.date}T${ts.time}:00`);
     const dayDate     = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate(), 12, 0, 0);
     const chunkBounds = map.getBounds();
@@ -519,19 +470,31 @@ export function MapView({
       west:  chunkBounds.getWest()  - 0.02,
       east:  chunkBounds.getEast()  + 0.02,
     } : null;
-    // Only compute sun data for currently visible cafes (active district + toggle).
-    // Viewport-visible ones first so the sidebar updates quickly.
-    const visCafes = cafesRef.current.filter((c) => visibleCafeIdsRef.current.has(c.id));
-    const visible = visCafes.filter((c) => !chunkVp || (
+    const visible = visibleCafes.filter((c) => !chunkVp || (
       c.lat >= chunkVp.south && c.lat <= chunkVp.north &&
       c.lng >= chunkVp.west  && c.lng <= chunkVp.east
     ));
-    const offscreen = visCafes.filter((c) => chunkVp && !(
+    const offscreen = visibleCafes.filter((c) => chunkVp && !(
       c.lat >= chunkVp.south && c.lat <= chunkVp.north &&
       c.lng >= chunkVp.west  && c.lng <= chunkVp.east
     ));
     const allCafes = [...visible, ...offscreen];
-    const remaining: Record<string, number | null> = {};
+
+    // Incremental mode: skip cafés whose sun data is already cached at this time.
+    const cafesToCompute = incrementalOnly
+      ? allCafes.filter((c) => !Object.prototype.hasOwnProperty.call(sunRemainingRef.current, c.id))
+      : allCafes;
+
+    // Nothing new to compute — settle immediately with existing data.
+    if (cafesToCompute.length === 0) {
+      onSunDataSettledRef.current?.();
+      return;
+    }
+
+    // Seed with existing results so the merged output includes all visible cafés.
+    const remaining: Record<string, number | null> = incrementalOnly
+      ? { ...sunRemainingRef.current }
+      : {};
     const timelines: SunTimelineData = {};
     const CHUNK = 15;
     let idx = 0;
@@ -544,26 +507,31 @@ export function MapView({
 
     function processChunk() {
       if (sunGenRef.current !== gen) return;
-      const end = Math.min(idx + CHUNK, allCafes.length);
+      const end = Math.min(idx + CHUNK, cafesToCompute.length);
       for (; idx < end; idx++) {
-        const cafe = allCafes[idx];
-        const nearbyForCafe = buildingGridRef.current?.getNearby(cafe.lat, cafe.lng) ?? buildings;
+        const cafe = cafesToCompute[idx];
+        const nearbyForCafe = buildingGridRef.current?.getNearby(cafe.lat, cafe.lng)
+          ?? Array.from(buildingCacheRef.current.values());
         remaining[cafe.id] = calcSunRemaining(cafe, currentDate, nearbyForCafe);
         timelines[cafe.id] = calcDayTimeline(cafe, dayDate, nearbyForCafe);
       }
-      if (idx < allCafes.length) {
+      if (idx < cafesToCompute.length) {
         schedule(processChunk);
       } else {
         onSunRemainingRef.current(remaining);
         onSunTimelineRef.current(timelines);
-        // Sync dot colors with the accurate calcSunRemaining result
+        // Sync shadow cache with accurate results.
+        for (const cafe of cafesToCompute) {
+          shadowCacheRef.current.set(cafe.id, remaining[cafe.id] === null);
+        }
+
         const source = mapInstanceRef.current?.getSource("cafes-source");
         if (source && mapReadyRef.current) {
           const selId = selectedCafeRef.current?.id ?? null;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (source as any).setData({
             type: "FeatureCollection",
-            features: visCafes.map((cafe) => ({
+            features: visibleCafes.map((cafe) => ({
               type: "Feature",
               geometry: { type: "Point", coordinates: [cafe.lng, cafe.lat] },
               properties: {
@@ -896,6 +864,8 @@ export function MapView({
             "circle-color": "#374151",
             "circle-stroke-width": ["case", ["get", "isSelected"], 2.5, 1.5],
             "circle-stroke-color": "#ffffff",
+            "circle-radius-transition": { duration: 220, delay: 0 },
+            "circle-stroke-width-transition": { duration: 220, delay: 0 },
           },
         }, before);
 
@@ -1013,7 +983,8 @@ export function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cafes]);
 
-  // ── instant dot update when visible set changes (district / restaurant toggle) ─
+  // ── visibility filter changed: update visible markers immediately, then
+  // only compute sun data for newly-visible cafés (incremental).
   useEffect(() => {
     if (!mapInstanceRef.current || !mapReadyRef.current) return;
     updateCafesSource(false);
@@ -1021,7 +992,7 @@ export function MapView({
     const rafId = requestAnimationFrame(() => {
       setTimeout(() => {
         if (!mapInstanceRef.current || !mapReadyRef.current) return;
-        updateCafesSource(true);
+        updateCafesSource(true, true); // incremental: skip already-computed cafés
       }, 120);
     });
     return () => cancelAnimationFrame(rafId);
@@ -1087,13 +1058,6 @@ export function MapView({
   return (
     <div className="w-full h-full relative">
       <div ref={mapRef} className="w-full h-full" />
-
-      {fetching && (
-        <div className="absolute top-3 left-14 z-[1000] bg-white/80 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-lg shadow-zinc-200/30 px-3.5 py-2 flex items-center gap-2 font-body text-zinc-500" style={{ fontSize: "12px" }}>
-          <div className="w-3 h-3 border-[1.5px] border-amber-400 border-t-transparent rounded-full animate-spin" />
-          Gebäude laden…
-        </div>
-      )}
 
       {/* Sunrise/sunset — top right */}
       <SunInfoOverlay timeState={timeState} />
