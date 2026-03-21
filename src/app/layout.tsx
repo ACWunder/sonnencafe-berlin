@@ -14,13 +14,13 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Sonnencafe Berlin – Sonnige Cafés entdecken",
+  title: "SunnyCorners Berlin – Sonnige Cafés entdecken",
   description:
-    "Welches Café in Berlin liegt gerade in der Sonne? Sonnencafe zeigt dir in Echtzeit, wo du jetzt einen sonnigen Platz findest – für jeden Tag und jede Uhrzeit.",
+    "Welches Café in Berlin liegt gerade in der Sonne? SunnyCorners zeigt dir in Echtzeit, wo du jetzt einen sonnigen Platz findest – für jeden Tag und jede Uhrzeit.",
   keywords: ["Berlin", "Café", "Sonne", "Sonnig", "Außengastronomie", "Kaffee", "Terrasse"],
-  authors: [{ name: "Sonnencafe Berlin" }],
-  creator: "Sonnencafe Berlin",
-  applicationName: "Sonnencafe Berlin",
+  authors: [{ name: "SunnyCorners Berlin" }],
+  creator: "SunnyCorners Berlin",
+  applicationName: "SunnyCorners Berlin",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -30,15 +30,15 @@ export const metadata: Metadata = {
     telephone: false,
   },
   openGraph: {
-    title: "Sonnencafe Berlin – Sonnige Cafés entdecken",
+    title: "SunnyCorners Berlin – Sonnige Cafés entdecken",
     description: "Welches Café in Berlin liegt gerade in der Sonne? Echtzeit-Schattenberechnung für Berlin.",
     type: "website",
     locale: "de_DE",
-    siteName: "Sonnencafe Berlin",
+    siteName: "SunnyCorners Berlin",
   },
   twitter: {
     card: "summary",
-    title: "Sonnencafe Berlin",
+    title: "SunnyCorners Berlin",
     description: "Welches Café in Berlin liegt gerade in der Sonne?",
   },
 };

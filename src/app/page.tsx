@@ -533,7 +533,7 @@ export default function Home() {
             <Sun className="w-4 h-4 text-white" strokeWidth={2.5} />
           </div>
           <h1 className="flex flex-col leading-none tracking-tight whitespace-nowrap">
-            <span className="font-display font-bold text-zinc-900 text-[13px]">Sonnencafe Berlin</span>
+            <span className="font-display font-bold text-zinc-900 text-[13px]">SunnyCorners Berlin</span>
             <span className="font-body font-normal text-zinc-900 text-[9px] mt-[2px]">für Lotte</span>
           </h1>
         </div>
@@ -665,7 +665,7 @@ export default function Home() {
                 <div className="w-6 h-6 rounded-[7px] bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
                   <Sun className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
                 </div>
-                <span className="font-display font-bold text-zinc-900 text-[13px]">Sonnencafe Berlin</span>
+                <span className="font-display font-bold text-zinc-900 text-[13px]">SunnyCorners Berlin</span>
               </div>
               <button
                 onClick={() => setSidebarOpen(false)}
