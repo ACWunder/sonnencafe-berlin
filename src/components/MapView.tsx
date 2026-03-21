@@ -149,6 +149,7 @@ function tightenBounds(
 
 export interface MapViewShadowHandle {
   updateShadow: (ts: TimeState) => void;
+  startLiveLocation: () => void;
 }
 
 const EMPTY_FEATURE_COLLECTION: { type: "FeatureCollection"; features: never[] } = {
@@ -175,6 +176,7 @@ interface MapViewProps {
   onClearSunData?: (ids: string[]) => void;
   shadowHandleRef?: React.MutableRefObject<MapViewShadowHandle | null>;
   activeDistrict: string;
+  onUserLocationChange?: (location: { lat: number; lng: number } | null) => void;
 }
 
 // Sun computation has moved to src/workers/sun.worker.ts.
@@ -328,7 +330,7 @@ function loadSunEmoji(map: any, onReady: () => void) {
 
 export function MapView({
   timeState, cafes, visibleCafeIds, sunRemaining, selectedCafe, onCafeSelect, onSunRemaining, onSunTimeline,
-  onSunDataSettled, onClearSunData, shadowHandleRef, activeDistrict,
+  onSunDataSettled, onClearSunData, shadowHandleRef, activeDistrict, onUserLocationChange,
 }: MapViewProps) {
   const mapRef         = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -413,7 +415,10 @@ export function MapView({
     }
   };
   if (shadowHandleRef) {
-    shadowHandleRef.current = { updateShadow: shadowUpdateFnRef.current };
+    shadowHandleRef.current = {
+      updateShadow: shadowUpdateFnRef.current,
+      startLiveLocation: startLiveLocationTracking,
+    };
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────
@@ -714,6 +719,7 @@ export function MapView({
 
     const nextState: LiveLocationState = { lat, lng, accuracy };
     locationStateRef.current = nextState;
+    onUserLocationChange?.({ lat, lng });
     updateLiveLocationVisual(nextState);
 
     if (centerOnNextLocationRef.current && mapInstanceRef.current) {
@@ -1187,6 +1193,7 @@ export function MapView({
         navigator.geolocation.clearWatch(locationWatchIdRef.current);
         locationWatchIdRef.current = null;
       }
+      onUserLocationChange?.(null);
       locationMarkerRef.current?.remove();
       locationMarkerRef.current = null;
       shadowWorkerRef.current?.terminate();
