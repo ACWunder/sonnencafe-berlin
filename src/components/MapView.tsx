@@ -326,6 +326,22 @@ function loadSunEmoji(map: any, onReady: () => void) {
   img.src = "/sun-emoji.png";
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function loadMoonEmoji(map: any) {
+  if (map.hasImage("cafe-shady")) return;
+  const canvas = document.createElement("canvas");
+  canvas.width = 56;
+  canvas.height = 56;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = '40px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+  ctx.fillText("🌑", 28, 30);
+  map.addImage("cafe-shady", ctx.getImageData(0, 0, 56, 56), { pixelRatio: 2 });
+}
+
 // ─── component ────────────────────────────────────────────────────────────────
 
 export function MapView({
@@ -1081,25 +1097,26 @@ export function MapView({
           },
         }, beforePlace);
 
-        // Shade cafés — circle layer, always visible
-        // Inserted before place labels so dots are above road names but below district names.
-        // Shade cafés (non-selected) — circle layer below sunny layer
-        map.addLayer({
-          id: "cafes",
-          type: "circle",
-          source: "cafes-source",
-          filter: ["all", ["==", ["get", "inShadow"], true], ["==", ["get", "isSelected"], false]],
-          paint: {
-            "circle-radius": ["interpolate", ["linear"], ["zoom"], 13, 5, 16, 6, 17, 7],
-            "circle-color": "#374151",
-            "circle-stroke-width": 1.5,
-            "circle-stroke-color": "#ffffff",
-          },
-        }, beforePlace);
-
         // Sunny cafés (non-selected) + selected cafés on top — emoji loaded once
         loadSunEmoji(map, () => {
           if (!mapReadyRef.current) return;
+          loadMoonEmoji(map);
+
+          // Non-selected shady cafés
+          map.addLayer({
+            id: "cafes",
+            type: "symbol",
+            source: "cafes-source",
+            filter: ["all", ["==", ["get", "inShadow"], true], ["==", ["get", "isSelected"], false]],
+            layout: {
+              "icon-image": "cafe-shady",
+              "icon-size": ["interpolate", ["linear"], ["zoom"], 12, 0.44, 14, 0.56, 16, 0.68, 18, 0.8],
+              "icon-allow-overlap": true,
+              "icon-ignore-placement": true,
+              "icon-anchor": "center",
+            },
+          }, beforePlace);
+
           // Non-selected sunny cafés
           map.addLayer({
             id: "cafes-sunny",
@@ -1118,15 +1135,15 @@ export function MapView({
           // Selected shady café — rendered above all others
           map.addLayer({
             id: "cafes-selected-shadow",
-            type: "circle",
+            type: "symbol",
             source: "cafes-source",
             filter: ["all", ["==", ["get", "inShadow"], true], ["==", ["get", "isSelected"], true]],
-            paint: {
-              "circle-radius": ["interpolate", ["linear"], ["zoom"], 13, 8, 16, 10, 17, 11],
-              "circle-color": "#374151",
-              "circle-stroke-width": 2.5,
-              "circle-stroke-color": "#ffffff",
-              "circle-radius-transition": { duration: 220, delay: 0 },
+            layout: {
+              "icon-image": "cafe-shady",
+              "icon-size": ["interpolate", ["linear"], ["zoom"], 12, 0.58, 14, 0.72, 16, 0.86, 18, 1.02],
+              "icon-allow-overlap": true,
+              "icon-ignore-placement": true,
+              "icon-anchor": "center",
             },
           }, beforePlace);
 
