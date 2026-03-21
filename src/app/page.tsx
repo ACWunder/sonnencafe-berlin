@@ -537,9 +537,6 @@ export default function Home() {
             <span className="font-body font-normal text-zinc-900 text-[9px] mt-[2px]">für Lotte</span>
           </h1>
         </div>
-
-        <div className="w-px h-4 bg-zinc-100 mx-0.5 shrink-0" />
-
         {/* Date */}
         <input
           type="date"
