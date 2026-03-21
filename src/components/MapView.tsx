@@ -371,7 +371,7 @@ export function MapView({
 
   function scheduleBgDistrictComputes(date: string, time: string) {
     bgSunQueueRef.current = [];
-    for (const [district, districtBuildings] of districtBuildingCacheRef.current) {
+    for (const [district, districtBuildings] of Array.from(districtBuildingCacheRef.current)) {
       if (district === activeDistrictRef.current) continue;
       const districtCafes = cafesRef.current.filter((c) => (c.district ?? 'Berlin') === district);
       if (districtCafes.length > 0)
