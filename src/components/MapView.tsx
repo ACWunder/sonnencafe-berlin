@@ -310,9 +310,11 @@ export function MapView({
   const pendingSunComputeRef   = useRef<{ cafes: Cafe[]; date: string; time: string } | null>(null);
   const pendingBackgroundRef   = useRef<{ cafes: Cafe[]; date: string; time: string } | null>(null);
   const isBackgroundComputeRef = useRef(false);
-  const bgDistrictQueueRef     = useRef<Array<{ buildings: BuildingFeature[]; cafes: Cafe[]; date: string; time: string }>>([]);
-  const currentDistrictBuildingsRef = useRef<BuildingFeature[]>([]);
-  const needsReinitRef         = useRef(false);
+  // Separate worker for background computation of other districts.
+  // Never touches the main sunWorker so there's no init/compute ordering conflict.
+  const bgSunWorkerRef   = useRef<Worker | null>(null);
+  const bgSunQueueRef    = useRef<Array<{ buildings: BuildingFeature[]; cafes: Cafe[]; date: string; time: string }>>([]);
+  const bgSunInFlightRef = useRef(false);
 
   const [, setFetching]  = useState(false);
 
@@ -349,6 +351,30 @@ export function MapView({
       sunDataTimeoutRef.current = null;
       updateCafesSource(true);
     }, delay);
+  }
+
+  // ── background district worker helpers ────────────────────────────────────
+  // The bg worker is completely independent from the main sun worker.
+  // It processes other districts one at a time using a simple queue.
+
+  function dispatchNextBgDistrict() {
+    if (bgSunInFlightRef.current) return;
+    const next = bgSunQueueRef.current.shift();
+    if (!next) return;
+    bgSunInFlightRef.current = true;
+    bgSunWorkerRef.current?.postMessage({ type: 'init', buildings: next.buildings });
+    bgSunWorkerRef.current?.postMessage({ type: 'compute', cafes: next.cafes, date: next.date, time: next.time });
+  }
+
+  function scheduleBgDistrictComputes(date: string, time: string) {
+    bgSunQueueRef.current = [];
+    for (const [district, districtBuildings] of districtBuildingCacheRef.current) {
+      if (district === activeDistrictRef.current) continue;
+      const districtCafes = cafesRef.current.filter((c) => (c.district ?? 'Berlin') === district);
+      if (districtCafes.length > 0)
+        bgSunQueueRef.current.push({ buildings: districtBuildings, cafes: districtCafes, date, time });
+    }
+    dispatchNextBgDistrict();
   }
 
   function dispatchSunCompute(cafes: Cafe[], date: string, time: string) {
@@ -417,23 +443,14 @@ export function MapView({
       : visibleCafes;
 
     if (!incrementalOnly) {
-      const visibleIds = new Set(visibleCafes.map((c) => c.id));
       // Phase 2: non-visible cafés in the active district (restaurant filter etc.)
+      const visibleIds = new Set(visibleCafes.map((c) => c.id));
       const bgCafes = cafesRef.current.filter(
         (c) => !visibleIds.has(c.id) && (c.district ?? 'Berlin') === activeDistrictRef.current
       );
       pendingBackgroundRef.current = bgCafes.length > 0
         ? { cafes: bgCafes, date: ts.date, time: ts.time }
         : null;
-      // Phase 3: cafés from other districts (need per-district building re-init)
-      const districtQueue: typeof bgDistrictQueueRef.current = [];
-      for (const [district, districtBuildings] of districtBuildingCacheRef.current) {
-        if (district === activeDistrictRef.current) continue;
-        const districtCafes = cafesRef.current.filter((c) => (c.district ?? 'Berlin') === district);
-        if (districtCafes.length > 0)
-          districtQueue.push({ buildings: districtBuildings, cafes: districtCafes, date: ts.date, time: ts.time });
-      }
-      bgDistrictQueueRef.current = districtQueue;
     }
 
     if (cafesToCompute.length === 0) {
@@ -490,9 +507,8 @@ export function MapView({
     buildings.forEach((b) => buildingCacheRef.current.set(b.id, b));
     buildingGridRef.current = new BuildingGrid(buildings);
 
-    currentDistrictBuildingsRef.current = buildings;
-    needsReinitRef.current = false;
-    bgDistrictQueueRef.current = [];
+    // Cancel any in-flight background district work — it would use wrong buildings.
+    bgSunQueueRef.current = [];
 
     // Send buildings to both workers so they have them ready
     shadowWorkerRef.current?.postMessage({ type: 'init', buildings });
@@ -592,6 +608,29 @@ export function MapView({
       : null;
     shadowWorkerRef.current = worker;
 
+    // Background sun worker — handles other districts independently
+    const bgSunWorker = typeof window !== 'undefined'
+      ? new Worker(new URL('../workers/sun.worker.ts', import.meta.url))
+      : null;
+    bgSunWorkerRef.current = bgSunWorker;
+
+    if (bgSunWorker) {
+      bgSunWorker.onmessage = (e: MessageEvent) => {
+        if (e.data.type !== 'computed') return;
+        bgSunInFlightRef.current = false;
+        const { remaining, timelines } = e.data as {
+          remaining: Record<string, number | null>;
+          timelines: import('@/types').SunTimelineData;
+        };
+        onSunRemainingRef.current(remaining);
+        onSunTimelineRef.current(timelines);
+        for (const [id, val] of Object.entries(remaining))
+          shadowCacheRef.current.set(id, val === null);
+        // Process next district in queue
+        dispatchNextBgDistrict();
+      };
+    }
+
     if (worker) {
       worker.onmessage = (e: MessageEvent) => {
         if (e.data.type !== 'rendered') return;
@@ -660,19 +699,15 @@ export function MapView({
 
         if (!wasBackground) {
           onSunDataSettledRef.current?.();
+          // Kick off background computation for other districts
+          scheduleBgDistrictComputes(timeStateRef.current.date, timeStateRef.current.time);
         }
 
-        // Drain: time-change pend > same-district background > other-district queue
+        // Drain pending (time-change) request first; if none, run background batch
         const next = pendingSunComputeRef.current;
         pendingSunComputeRef.current = null;
         if (next) {
-          // Time changed — clear all background, re-init current district if needed
           pendingBackgroundRef.current = null;
-          bgDistrictQueueRef.current = [];
-          if (needsReinitRef.current) {
-            needsReinitRef.current = false;
-            sunWorker.postMessage({ type: 'init', buildings: currentDistrictBuildingsRef.current });
-          }
           sunComputeInFlightRef.current = true;
           sunWorker.postMessage({ type: 'compute', cafes: next.cafes, date: next.date, time: next.time });
         } else {
@@ -682,20 +717,6 @@ export function MapView({
             isBackgroundComputeRef.current = true;
             sunComputeInFlightRef.current = true;
             sunWorker.postMessage({ type: 'compute', cafes: bg.cafes, date: bg.date, time: bg.time });
-          } else {
-            // Process next other-district batch (each needs its own building init)
-            const nextDistrict = bgDistrictQueueRef.current.shift();
-            if (nextDistrict) {
-              needsReinitRef.current = true;
-              isBackgroundComputeRef.current = true;
-              sunComputeInFlightRef.current = true;
-              sunWorker.postMessage({ type: 'init', buildings: nextDistrict.buildings });
-              sunWorker.postMessage({ type: 'compute', cafes: nextDistrict.cafes, date: nextDistrict.date, time: nextDistrict.time });
-            } else if (needsReinitRef.current) {
-              // All districts done — restore current district buildings
-              needsReinitRef.current = false;
-              sunWorker.postMessage({ type: 'init', buildings: currentDistrictBuildingsRef.current });
-            }
           }
         }
       };
@@ -961,6 +982,8 @@ export function MapView({
       shadowWorkerRef.current = null;
       sunWorkerRef.current?.terminate();
       sunWorkerRef.current = null;
+      bgSunWorkerRef.current?.terminate();
+      bgSunWorkerRef.current = null;
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
