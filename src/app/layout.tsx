@@ -21,6 +21,10 @@ export const metadata: Metadata = {
   authors: [{ name: "SunnyCorners Berlin" }],
   creator: "SunnyCorners Berlin",
   applicationName: "SunnyCorners Berlin",
+  icons: {
+    icon: "/sunnycorners-icon-v2.png",
+    apple: "/sunnycorners-apple-icon-v2.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
