@@ -348,7 +348,7 @@ export function MapView({
     }
   }
 
-  function scheduleSunDataRefresh(delay = 500) {
+  function scheduleSunDataRefresh(delay = 100) {
     clearScheduledSunData();
     sunDataTimeoutRef.current = window.setTimeout(() => {
       sunDataTimeoutRef.current = null;
@@ -708,20 +708,21 @@ export function MapView({
         const wasBackground = isBackgroundComputeRef.current;
         isBackgroundComputeRef.current = false;
 
-        if (!wasBackground) {
-          onSunDataSettledRef.current?.();
-          // Kick off background computation for other districts
-          scheduleBgDistrictComputes(timeStateRef.current.date, timeStateRef.current.time);
-        }
-
-        // Drain pending (time-change) request first; if none, run background batch
+        // Drain pending (time-change) request first; if none, run background batch.
+        // Only settle after the final compute — not on intermediate stale results.
         const next = pendingSunComputeRef.current;
         pendingSunComputeRef.current = null;
         if (next) {
           pendingBackgroundRef.current = null;
           sunComputeInFlightRef.current = true;
           sunWorker.postMessage({ type: 'compute', cafes: next.cafes, date: next.date, time: next.time });
+          // Don't settle yet — another compute is in flight
         } else {
+          if (!wasBackground) {
+            onSunDataSettledRef.current?.();
+            // Kick off background computation for other districts
+            scheduleBgDistrictComputes(timeStateRef.current.date, timeStateRef.current.time);
+          }
           const bg = pendingBackgroundRef.current;
           if (bg) {
             pendingBackgroundRef.current = null;
