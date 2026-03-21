@@ -39,7 +39,7 @@ function ohExpandDays(spec: string): number[] {
   return days;
 }
 
-/** Returns today's opening hours as a formatted string like "9–18h", or null. */
+/** Returns formatted hours for today, e.g. "09:00–18:00h", null if unavailable. */
 function getTodayHours(oh: string | undefined, date: Date): string | null {
   if (!oh) return null;
   const s = oh.trim();
@@ -57,15 +57,19 @@ function getTodayHours(oh: string | undefined, date: Date): string | null {
     if (!days.includes(dow)) continue;
     const timeSpec = m[2].trim().toLowerCase();
     if (timeSpec === "off") { result = null; continue; }
-    // Format first time range: "09:00-18:00" → "9–18h"
+    // Format first time range only: "09:00-18:00" → "09:00–18:00h"
     const range = timeSpec.split(",")[0].trim();
     const parts = range.split("-");
     if (parts.length < 2) continue;
     const fmt = (t: string) => {
       const [h, m2] = t.trim().split(":").map(Number);
-      return m2 ? `${h}:${String(m2).padStart(2, "0")}` : `${h}`;
+      if (isNaN(h)) return null;
+      return `${String(h).padStart(2, "0")}:${String(m2 || 0).padStart(2, "0")}`;
     };
-    result = `${fmt(parts[0])}–${fmt(parts[1])}h`;
+    const start = fmt(parts[0]);
+    const end = fmt(parts[1]);
+    if (!start || !end) continue;
+    result = `${start}–${end}h`;
   }
   return result;
 }
@@ -1148,54 +1152,62 @@ function SelectedCafeCard({
     <div className={`m-3 rounded-2xl overflow-hidden border border-zinc-100 shadow-xl shadow-zinc-200/40 shrink-0 bg-white relative cafe-card-enter${isClosing ? " cafe-card-leave" : ""}`}>
 
       {/* Card header */}
-      <div className={`flex items-start pl-4 pr-2 pt-4 pb-3.5 ${
+      <div className={`relative pl-4 pr-2 pt-4 pb-3.5 ${
         isSunny
           ? "bg-gradient-to-b from-amber-100 via-amber-50 to-white"
           : "bg-gradient-to-b from-zinc-200 via-zinc-100 to-white"
       }`}>
-        <div className="flex-1 min-w-0">
-          <h2 className="font-display font-bold text-zinc-900 text-[15px] leading-tight">
-            {cafe.name}
-            {openStatus !== null && (
-              <span
-                className={`whitespace-nowrap font-body font-semibold leading-none ${openStatus ? "" : "text-red-400"}`}
-                style={{ fontSize: "8px", verticalAlign: "middle", marginLeft: "6px", ...(openStatus ? { color: "#00cd00" } : {}) }}
-              >
-                {openStatus ? "geöffnet" : "geschlossen"}
-                {todayHours && (
-                  <span className="font-normal opacity-80"> · {todayHours}</span>
-                )}
-              </span>
-            )}
+        <button
+          onClick={handleClose}
+          className="absolute right-2 top-4 z-10 flex h-[48px] w-[48px] items-start justify-center pt-0.5 active:scale-90 transition-transform duration-100"
+        >
+          <span className="flex h-[30px] w-[30px] items-center justify-center rounded-full bg-zinc-900/[0.07]">
+            <X className="w-[15px] h-[15px] text-zinc-500" strokeWidth={2.5} />
+          </span>
+        </button>
+
+        <div className="min-w-0">
+          <h2 className="font-display font-bold text-zinc-900 text-[16px] leading-[1.15] tracking-tight break-words">
+            <span className="block pr-14">{cafe.name}</span>
           </h2>
+
+          {(openStatus !== null || todayHours) && (
+            <div className="mt-1 min-w-0">
+              <div
+                className={`text-[10px] font-body font-semibold leading-[1.1] ${
+                  openStatus === false ? "text-red-400" : ""
+                }`}
+                style={openStatus === true ? { color: "#00cd00" } : openStatus === null ? { color: "#71717a" } : undefined}
+              >
+                {openStatus !== null ? (openStatus ? "Geöffnet" : "Geschlossen") : null}
+                {todayHours ? `${openStatus !== null ? " · " : ""}${todayHours}` : null}
+              </div>
+            </div>
+          )}
+
           {(cafe.address || cafe.district) && (
-            <div className="flex items-center gap-1 mt-1">
+            <div className="flex items-center gap-1 mt-1.5 min-w-0">
               <MapPin className="w-3 h-3 text-zinc-400 shrink-0" />
-              <p className="text-[11px] text-zinc-500 font-body leading-none">
+              <p className="min-w-0 text-[11px] text-zinc-500 font-body leading-[1.25] break-words">
                 {cafe.address || cafe.district}
               </p>
             </div>
           )}
+
           {/* Sun pill */}
-          <div className={`inline-flex items-center gap-1.5 mt-2.5 px-2.5 py-1 rounded-full font-body font-medium whitespace-nowrap max-w-full overflow-hidden text-[10.5px] ${
+          <div className={`inline-flex max-w-full items-center gap-1.5 mt-2.5 px-2.5 py-1 rounded-full font-body font-medium text-[10.5px] ${
             isSunny
               ? "bg-orange-100/80 text-orange-600"
               : "bg-zinc-100 text-zinc-500"
           }`}>
-            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isSunny ? "bg-orange-400 sun-pulse" : "bg-zinc-400"}`} />
-            <span className="truncate">{sunLabel}</span>
+            {isSunny ? (
+              <span className="shrink-0 leading-none">☀️</span>
+            ) : (
+              <span className="shrink-0 text-[8px] leading-none">🌑</span>
+            )}
+            <span className="min-w-0 break-words leading-[1.2]">{sunLabel}</span>
           </div>
         </div>
-
-        {/* Close button — flex sibling so text area is bounded, never overlaps */}
-        <button
-          onClick={handleClose}
-          className="shrink-0 -mr-0.5 -mt-0.5 w-[48px] h-[48px] flex items-start justify-center pt-0.5 active:scale-90 transition-transform duration-100"
-        >
-          <span className="w-[30px] h-[30px] rounded-full bg-zinc-900/[0.07] flex items-center justify-center">
-            <X className="w-[15px] h-[15px] text-zinc-500" strokeWidth={2.5} />
-          </span>
-        </button>
       </div>
 
       {/* Sun timeline */}
