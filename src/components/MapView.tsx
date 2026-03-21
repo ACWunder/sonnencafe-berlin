@@ -310,6 +310,9 @@ export function MapView({
   const pendingSunComputeRef   = useRef<{ cafes: Cafe[]; date: string; time: string } | null>(null);
   const pendingBackgroundRef   = useRef<{ cafes: Cafe[]; date: string; time: string } | null>(null);
   const isBackgroundComputeRef = useRef(false);
+  const bgDistrictQueueRef     = useRef<Array<{ buildings: BuildingFeature[]; cafes: Cafe[]; date: string; time: string }>>([]);
+  const currentDistrictBuildingsRef = useRef<BuildingFeature[]>([]);
+  const needsReinitRef         = useRef(false);
 
   const [, setFetching]  = useState(false);
 
@@ -415,10 +418,22 @@ export function MapView({
 
     if (!incrementalOnly) {
       const visibleIds = new Set(visibleCafes.map((c) => c.id));
-      const bgCafes = cafesRef.current.filter((c) => !visibleIds.has(c.id));
+      // Phase 2: non-visible cafés in the active district (restaurant filter etc.)
+      const bgCafes = cafesRef.current.filter(
+        (c) => !visibleIds.has(c.id) && (c.district ?? 'Berlin') === activeDistrictRef.current
+      );
       pendingBackgroundRef.current = bgCafes.length > 0
         ? { cafes: bgCafes, date: ts.date, time: ts.time }
         : null;
+      // Phase 3: cafés from other districts (need per-district building re-init)
+      const districtQueue: typeof bgDistrictQueueRef.current = [];
+      for (const [district, districtBuildings] of districtBuildingCacheRef.current) {
+        if (district === activeDistrictRef.current) continue;
+        const districtCafes = cafesRef.current.filter((c) => (c.district ?? 'Berlin') === district);
+        if (districtCafes.length > 0)
+          districtQueue.push({ buildings: districtBuildings, cafes: districtCafes, date: ts.date, time: ts.time });
+      }
+      bgDistrictQueueRef.current = districtQueue;
     }
 
     if (cafesToCompute.length === 0) {
@@ -474,6 +489,10 @@ export function MapView({
     buildingCacheRef.current.clear();
     buildings.forEach((b) => buildingCacheRef.current.set(b.id, b));
     buildingGridRef.current = new BuildingGrid(buildings);
+
+    currentDistrictBuildingsRef.current = buildings;
+    needsReinitRef.current = false;
+    bgDistrictQueueRef.current = [];
 
     // Send buildings to both workers so they have them ready
     shadowWorkerRef.current?.postMessage({ type: 'init', buildings });
@@ -643,11 +662,17 @@ export function MapView({
           onSunDataSettledRef.current?.();
         }
 
-        // Drain pending (time-change) request first; if none, run background batch
+        // Drain: time-change pend > same-district background > other-district queue
         const next = pendingSunComputeRef.current;
         pendingSunComputeRef.current = null;
         if (next) {
-          pendingBackgroundRef.current = null; // stale background, discard
+          // Time changed — clear all background, re-init current district if needed
+          pendingBackgroundRef.current = null;
+          bgDistrictQueueRef.current = [];
+          if (needsReinitRef.current) {
+            needsReinitRef.current = false;
+            sunWorker.postMessage({ type: 'init', buildings: currentDistrictBuildingsRef.current });
+          }
           sunComputeInFlightRef.current = true;
           sunWorker.postMessage({ type: 'compute', cafes: next.cafes, date: next.date, time: next.time });
         } else {
@@ -657,6 +682,20 @@ export function MapView({
             isBackgroundComputeRef.current = true;
             sunComputeInFlightRef.current = true;
             sunWorker.postMessage({ type: 'compute', cafes: bg.cafes, date: bg.date, time: bg.time });
+          } else {
+            // Process next other-district batch (each needs its own building init)
+            const nextDistrict = bgDistrictQueueRef.current.shift();
+            if (nextDistrict) {
+              needsReinitRef.current = true;
+              isBackgroundComputeRef.current = true;
+              sunComputeInFlightRef.current = true;
+              sunWorker.postMessage({ type: 'init', buildings: nextDistrict.buildings });
+              sunWorker.postMessage({ type: 'compute', cafes: nextDistrict.cafes, date: nextDistrict.date, time: nextDistrict.time });
+            } else if (needsReinitRef.current) {
+              // All districts done — restore current district buildings
+              needsReinitRef.current = false;
+              sunWorker.postMessage({ type: 'init', buildings: currentDistrictBuildingsRef.current });
+            }
           }
         }
       };
