@@ -161,6 +161,7 @@ interface MapViewProps {
   onSunRemaining: (data: Record<string, number | null>) => void;
   onSunTimeline: (data: SunTimelineData) => void;
   onSunDataSettled?: () => void;
+  onClearSunData?: (ids: string[]) => void;
   shadowHandleRef?: React.MutableRefObject<MapViewShadowHandle | null>;
   activeDistrict: string;
 }
@@ -256,7 +257,7 @@ function loadSunEmoji(map: any, onReady: () => void) {
 
 export function MapView({
   timeState, cafes, visibleCafeIds, sunRemaining, selectedCafe, onCafeSelect, onSunRemaining, onSunTimeline,
-  onSunDataSettled, shadowHandleRef, activeDistrict,
+  onSunDataSettled, onClearSunData, shadowHandleRef, activeDistrict,
 }: MapViewProps) {
   const mapRef         = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -298,6 +299,8 @@ export function MapView({
   onSunTimelineRef.current = onSunTimeline;
   const onSunDataSettledRef = useRef(onSunDataSettled);
   onSunDataSettledRef.current = onSunDataSettled;
+  const onClearSunDataRef   = useRef(onClearSunData);
+  onClearSunDataRef.current = onClearSunData;
   const timeStateRef      = useRef(timeState);
   timeStateRef.current    = timeState;
   // Cache: cafe id → inShadow, so selection changes don't recompute shadows
@@ -509,6 +512,14 @@ export function MapView({
 
     // Cancel any in-flight background district work — it would use wrong buildings.
     bgSunQueueRef.current = [];
+
+    // Clear stale sun data for this district so cafés default to shadow
+    // until freshly computed — prevents the "all sunny" flash on district switch.
+    const districtCafeIds = cafesRef.current
+      .filter((c) => (c.district ?? 'Berlin') === district)
+      .map((c) => c.id);
+    districtCafeIds.forEach((id) => shadowCacheRef.current.delete(id));
+    onClearSunDataRef.current?.(districtCafeIds);
 
     // Send buildings to both workers so they have them ready
     shadowWorkerRef.current?.postMessage({ type: 'init', buildings });

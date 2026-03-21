@@ -783,6 +783,11 @@ export default function Home() {
             onSunTimeline={handleSunTimeline}
             shadowHandleRef={shadowHandleRef}
             onSunDataSettled={() => setIsCafeSymbolsUpdating(false)}
+            onClearSunData={(ids) => setSunRemaining(prev => {
+              const next = { ...prev };
+              ids.forEach(id => delete next[id]);
+              return next;
+            })}
             activeDistrict={activeDistrict}
           />
 
