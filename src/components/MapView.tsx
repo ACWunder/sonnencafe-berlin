@@ -151,6 +151,17 @@ export interface MapViewShadowHandle {
   updateShadow: (ts: TimeState) => void;
 }
 
+const EMPTY_FEATURE_COLLECTION: { type: "FeatureCollection"; features: never[] } = {
+  type: "FeatureCollection",
+  features: [],
+};
+
+interface LiveLocationState {
+  lat: number;
+  lng: number;
+  accuracy: number;
+}
+
 interface MapViewProps {
   timeState: TimeState;
   cafes: Cafe[];
@@ -235,6 +246,66 @@ function polygonToGeoJSON(polygon: [number, number][]): number[][] {
   return ring;
 }
 
+function distanceMeters(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const lat1 = toRad(aLat);
+  const lat2 = toRad(bLat);
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+  const h = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function makeAccuracyCircle(lng: number, lat: number, radiusM: number) {
+  const steps = 48;
+  const latRadius = radiusM / 111_320;
+  const lngRadius = radiusM / (111_320 * Math.cos((lat * Math.PI) / 180));
+  const ring: number[][] = [];
+
+  for (let i = 0; i <= steps; i++) {
+    const angle = (i / steps) * Math.PI * 2;
+    ring.push([
+      lng + lngRadius * Math.cos(angle),
+      lat + latRadius * Math.sin(angle),
+    ]);
+  }
+
+  return {
+    type: "FeatureCollection",
+    features: [{
+      type: "Feature",
+      geometry: { type: "Polygon", coordinates: [ring] },
+      properties: {},
+    }],
+  } as const;
+}
+
+function createLocationPuck() {
+  const root = document.createElement("div");
+  root.style.cssText = [
+    "position:relative",
+    "width:18px",
+    "height:18px",
+    "pointer-events:none",
+  ].join(";");
+
+  const pulse = document.createElement("div");
+  pulse.style.cssText = [
+    "width:18px",
+    "height:18px",
+    "border-radius:9999px",
+    "background:#4285f4",
+    "border:2.5px solid rgba(255,255,255,0.96)",
+    "box-shadow:0 0 0 4px rgba(66,133,244,0.25)",
+    "animation:locationPulse 2s ease-in-out infinite",
+  ].join(";");
+  root.appendChild(pulse);
+
+  return { root };
+}
+
 // Load Twemoji sun PNG and add as map image; calls onReady when done.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function loadSunEmoji(map: any, onReady: () => void) {
@@ -262,6 +333,8 @@ export function MapView({
   const mapRef         = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapInstanceRef = useRef<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const maplibreRef    = useRef<any>(null);
   const mapReadyRef    = useRef(false);  // true once map 'load' event fired
 
   const shadowCanvasRef    = useRef<HTMLCanvasElement | null>(null);
@@ -281,6 +354,10 @@ export function MapView({
   const selectFromMapRef = useRef(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const locationMarkerRef = useRef<any>(null);
+  const locationWatchIdRef = useRef<number | null>(null);
+  const locationStateRef = useRef<LiveLocationState | null>(null);
+  const centerOnNextLocationRef = useRef(false);
+  const [isTrackingLocation, setIsTrackingLocation] = useState(false);
 
   // Stable refs so event handlers always see current prop values
   const cafesRef          = useRef<Cafe[]>(cafes);
@@ -607,6 +684,79 @@ export function MapView({
       .catch(() => {});
   }
 
+  function updateLiveLocationVisual(state: LiveLocationState) {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReadyRef.current) return;
+
+    if (!locationMarkerRef.current && maplibreRef.current) {
+      const { root } = createLocationPuck();
+      locationMarkerRef.current = new maplibreRef.current.Marker({ element: root, anchor: "center" })
+        .setLngLat([state.lng, state.lat])
+        .addTo(map);
+    } else {
+      locationMarkerRef.current?.setLngLat([state.lng, state.lat]);
+    }
+
+    const accuracySource = map.getSource("user-location-accuracy-source");
+    if (accuracySource) {
+      accuracySource.setData(makeAccuracyCircle(state.lng, state.lat, Math.max(3, state.accuracy)));
+    }
+  }
+
+  function acceptLocationUpdate(pos: GeolocationPosition) {
+    const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+    const prev = locationStateRef.current;
+    const movement = prev ? distanceMeters(prev.lat, prev.lng, lat, lng) : Infinity;
+
+    if (prev && accuracy > prev.accuracy * 1.8 && prev.accuracy <= 25 && movement < Math.max(6, prev.accuracy * 0.35)) {
+      return;
+    }
+
+    const nextState: LiveLocationState = { lat, lng, accuracy };
+    locationStateRef.current = nextState;
+    updateLiveLocationVisual(nextState);
+
+    if (centerOnNextLocationRef.current && mapInstanceRef.current) {
+      centerOnNextLocationRef.current = false;
+      mapInstanceRef.current.easeTo({
+        center: [lng, lat],
+        zoom: Math.max(mapInstanceRef.current.getZoom(), 17),
+        duration: 700,
+      });
+    }
+  }
+
+  function startLiveLocationTracking() {
+    if (typeof navigator === "undefined" || !navigator.geolocation) return;
+
+    centerOnNextLocationRef.current = true;
+    setIsTrackingLocation(true);
+
+    if (locationStateRef.current && mapInstanceRef.current) {
+      const { lng, lat } = locationStateRef.current;
+      mapInstanceRef.current.easeTo({
+        center: [lng, lat],
+        zoom: Math.max(mapInstanceRef.current.getZoom(), 17),
+        duration: 500,
+      });
+    }
+
+    if (locationWatchIdRef.current !== null) return;
+
+    locationWatchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => acceptLocationUpdate(pos),
+      () => {
+        setIsTrackingLocation(false);
+        locationWatchIdRef.current = null;
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 15000,
+      },
+    );
+  }
+
   // ── init map once ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
@@ -736,6 +886,7 @@ export function MapView({
 
     import("maplibre-gl").then((maplibregl) => {
       if (!mounted || !mapRef.current || mapInstanceRef.current) return;
+      maplibreRef.current = maplibregl;
 
       const map = new maplibregl.Map({
         container: mapRef.current,
@@ -839,6 +990,11 @@ export function MapView({
           data: { type: "FeatureCollection", features: [] },
         });
 
+        map.addSource("user-location-accuracy-source", {
+          type: "geojson",
+          data: EMPTY_FEATURE_COLLECTION,
+        });
+
         // ── layers (z-order: bottom → top, all inserted before base labels) ─
 
         map.addLayer({
@@ -879,6 +1035,27 @@ export function MapView({
           source: "buildings-source",
           paint: { "line-color": "#c9beaf", "line-width": 0.7 },
         }, before);
+
+        map.addLayer({
+          id: "user-location-accuracy-fill",
+          type: "fill",
+          source: "user-location-accuracy-source",
+          paint: {
+            "fill-color": "#4285f4",
+            "fill-opacity": 0.14,
+          },
+        }, beforePlace);
+
+        map.addLayer({
+          id: "user-location-accuracy-outline",
+          type: "line",
+          source: "user-location-accuracy-source",
+          paint: {
+            "line-color": "#4285f4",
+            "line-opacity": 0.28,
+            "line-width": 1.5,
+          },
+        }, beforePlace);
 
         // Shade cafés — circle layer, always visible
         // Inserted before place labels so dots are above road names but below district names.
@@ -990,6 +1167,7 @@ export function MapView({
 
         loadDistrictBuildings(activeDistrictRef.current);
         loadGreenAreas();
+        if (locationStateRef.current) updateLiveLocationVisual(locationStateRef.current);
 
         // Pre-fetch all other district building files in the background
         // so switching districts later is instant (no network wait).
@@ -1005,6 +1183,12 @@ export function MapView({
       clearScheduledSunData();
       shadowRenderInFlightRef.current = false;
       pendingShadowTimeRef.current = null;
+      if (locationWatchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
+        navigator.geolocation.clearWatch(locationWatchIdRef.current);
+        locationWatchIdRef.current = null;
+      }
+      locationMarkerRef.current?.remove();
+      locationMarkerRef.current = null;
       shadowWorkerRef.current?.terminate();
       shadowWorkerRef.current = null;
       sunWorkerRef.current?.terminate();
@@ -1121,35 +1305,14 @@ export function MapView({
       {/* Locate button + compass stacked — bottom right */}
       <div className="absolute z-[500] flex flex-col gap-3 items-end" style={{ bottom: "24px", right: "16px" }}>
         <button
-          onClick={() => {
-            if (!mapInstanceRef.current) return;
-            navigator.geolocation.getCurrentPosition(
-              (pos) => {
-                import("maplibre-gl").then((maplibregl) => {
-                  const map = mapInstanceRef.current;
-                  if (!map) return;
-                  const { latitude: lat, longitude: lng } = pos.coords;
-                  locationMarkerRef.current?.remove();
-                  const el = document.createElement("div");
-                  el.style.cssText = [
-                    "width:18px;height:18px;border-radius:50%;",
-                    "background:#3b82f6;border:2.5px solid white;",
-                    "box-shadow:0 0 0 4px rgba(59,130,246,0.25);",
-                    "animation:locationPulse 2s ease-in-out infinite;",
-                  ].join("");
-                  locationMarkerRef.current = new maplibregl.Marker({ element: el })
-                    .setLngLat([lng, lat])
-                    .addTo(map);
-                  map.easeTo({ center: [lng, lat], duration: 600 });
-                });
-              },
-              () => {},
-              { enableHighAccuracy: true, timeout: 8000 },
-            );
-          }}
-          className="w-[56px] h-[56px] bg-white rounded-full shadow-xl shadow-zinc-300/40 border border-zinc-100 flex items-center justify-center"
+          onClick={startLiveLocationTracking}
+          className={`w-[56px] h-[56px] rounded-full shadow-xl shadow-zinc-300/40 border flex items-center justify-center transition-colors ${
+            isTrackingLocation
+              ? "bg-blue-50 border-blue-200"
+              : "bg-white border-zinc-100"
+          }`}
           style={{ marginRight: "5px" }}
-          title="Meinen Standort anzeigen"
+          title="Live-Standort anzeigen"
         >
           <svg width="22" height="22" viewBox="0 0 24 24">
             <path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z" fill="#4285f4"/>
