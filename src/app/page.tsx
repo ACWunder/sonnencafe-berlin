@@ -9,27 +9,7 @@ import type { Cafe, TimeState, SunTimeline, SunTimelineData } from "@/types";
 import { MapView, type MapViewShadowHandle } from "@/components/MapView";
 import { InstallBanner } from "@/components/InstallBanner";
 import { isRestaurantType } from "@/lib/overpass";
-import { DEFAULT_SUN_LOCATION } from "@/lib/mapConfig";
 import { getSunTimes } from "@/lib/sun";
-
-// ── Module-level cafe JSON promise (starts fetching immediately on page load) ──
-let _cafesJsonPromise: Promise<Cafe[]> | null = null;
-function getCafesJson(): Promise<Cafe[]> {
-  if (!_cafesJsonPromise) {
-    _cafesJsonPromise = fetch("/cafes.json")
-      .then((r) => { if (!r.ok) throw new Error("no static file"); return r.json(); })
-      .then((d: { cafes?: Cafe[] }) => d.cafes ?? [])
-      .catch(() =>
-        fetch("/api/cafes")
-          .then((r) => r.json())
-          .then((d: { cafes?: Cafe[] }) => d.cafes ?? [])
-          .catch(() => [] as Cafe[])
-      );
-  }
-  return _cafesJsonPromise;
-}
-// Kick off the fetch immediately
-getCafesJson();
 
 // ─── Opening hours parser (OSM format) ───────────────────────────────────────
 
@@ -246,23 +226,10 @@ export default function Home() {
     const now = new Date();
     return { date: format(now, "yyyy-MM-dd"), time: format(now, "HH:mm") };
   });
-  const sunLocation = DEFAULT_SUN_LOCATION;
-  const [isCafeSymbolsUpdating, setIsCafeSymbolsUpdating] = useState(false);
+  const [isCafeSymbolsUpdating, setIsCafeSymbolsUpdating] = useState(true);
   const timeStateRef = useRef(timeState);
   timeStateRef.current = timeState;
-  const showSpinner = useCallback(() => {
-    setIsCafeSymbolsUpdating(true);
-  }, []);
   const shadowHandleRef = useRef<MapViewShadowHandle | null>(null);
-  // Tracks whether the cafes fetch has completed at least once.
-  const cafesLoadedRef = useRef(false);
-  // Suppresses spinner during silent background cafe merge.
-  const [isBackgroundMerge, setIsBackgroundMerge] = useState(false);
-  const isBackgroundMergeRef = useRef(false);
-  // Stores all cafes from cafes.json (not in state — used for lazy viewport loading).
-  const allCafesRef = useRef<Cafe[]>([]);
-  // IDs of cafes already added to state.
-  const loadedCafeIdsRef = useRef<Set<string>>(new Set());
   const [selectedTime, setSelectedTime] = useState<number | null>(null);
   const [sunriseTime, setSunriseTime] = useState<number | null>(null);
   const [sunsetTime, setSunsetTime] = useState<number | null>(null);
@@ -292,6 +259,8 @@ export default function Home() {
   const [showFilter, setShowFilter] = useState(false);
   const ALL_DISTRICTS = ["Mitte", "Kreuzberg", "Prenzlauer Berg", "Schöneberg"] as const;
   const [activeDistrict, setActiveDistrict] = useState<string>("Mitte");
+  const sunLocation = DISTRICT_SUN_CENTERS[activeDistrict] ?? DISTRICT_SUN_CENTERS.Mitte;
+
   // ── Restaurant toggle ─────────────────────────────────────────────────────
   const [includeRestaurants, setIncludeRestaurants] = useState(false);
 
@@ -421,49 +390,12 @@ export default function Home() {
     return () => clearInterval(id);
   }, []);
 
-  // Helper: merge cafes for a viewport (with small buffer) into state silently.
-  const mergeCafesForBounds = useCallback((bounds: { south: number; north: number; west: number; east: number }) => {
-    const all = allCafesRef.current;
-    if (all.length === 0) return;
-    const buf = 0.15;
-    const dLat = (bounds.north - bounds.south) * buf;
-    const dLng = (bounds.east - bounds.west) * buf;
-    const newCafes = all.filter((c) =>
-      !loadedCafeIdsRef.current.has(c.id) &&
-      c.lat >= bounds.south - dLat && c.lat <= bounds.north + dLat &&
-      c.lng >= bounds.west  - dLng && c.lng <= bounds.east  + dLng
-    );
-    if (newCafes.length === 0) return;
-    for (const c of newCafes) loadedCafeIdsRef.current.add(c.id);
-    isBackgroundMergeRef.current = true;
-    setIsBackgroundMerge(true);
-    setCafes((prev) => [...prev, ...newCafes]);
-    setTimeout(() => { isBackgroundMergeRef.current = false; setIsBackgroundMerge(false); }, 100);
+  useEffect(() => {
+    fetch("/api/cafes")
+      .then((r) => r.json())
+      .then((d) => setCafes(d.cafes ?? []))
+      .catch(() => {});
   }, []);
-
-  // Initial load: set ONLY viewport cafes → spinner clears, app becomes usable.
-  const handleInitialBounds = useCallback((bounds: { south: number; north: number; west: number; east: number }) => {
-    getCafesJson().then((all) => {
-      if (cafesLoadedRef.current) return;
-      allCafesRef.current = all;
-      const buf = 0.15;
-      const dLat = (bounds.north - bounds.south) * buf;
-      const dLng = (bounds.east - bounds.west) * buf;
-      const vpCafes = all.filter((c) =>
-        c.lat >= bounds.south - dLat && c.lat <= bounds.north + dLat &&
-        c.lng >= bounds.west  - dLng && c.lng <= bounds.east  + dLng
-      );
-      for (const c of vpCafes) loadedCafeIdsRef.current.add(c.id);
-      cafesLoadedRef.current = true;
-      setCafes(vpCafes);
-    });
-  }, [mergeCafesForBounds]);
-
-  // On pan/zoom: silently merge cafes for the new viewport area.
-  const handleBoundsChange = useCallback((bounds: { south: number; north: number; west: number; east: number }) => {
-    if (!cafesLoadedRef.current) return;
-    mergeCafesForBounds(bounds);
-  }, [mergeCafesForBounds]);
 
   useEffect(() => {
     const dayDate = new Date(`${timeState.date}T12:00:00`);
@@ -475,7 +407,7 @@ export default function Home() {
     setSunriseTime((prev) => (prev === nextSunrise ? prev : nextSunrise));
     setSunsetTime((prev) => (prev === nextSunset ? prev : nextSunset));
     setSelectedTime((prev) => (prev === currentMinute ? prev : currentMinute));
-  }, [sunLocation, timeState.date, timeState.time]);
+  }, [activeDistrict, sunLocation, timeState.date, timeState.time]);
 
   // Direct shadow update — bypasses React state for instant visual response.
   const handleSliderShadow = useCallback((minute: number) => {
@@ -492,12 +424,12 @@ export default function Home() {
     const nextTime = minuteToTime(nextMinute);
     setSelectedTime(nextMinute);
     startTransition(() => {
-      showSpinner();
+      setIsCafeSymbolsUpdating(true);
       setTimeState((prev) => (
         prev.time === nextTime ? prev : { ...prev, time: nextTime }
       ));
     });
-  }, [sunriseTime, sunsetTime, showSpinner]);
+  }, [sunriseTime, sunsetTime]);
 
   const filtered = useMemo(() => {
     const q = search.trim();
@@ -1009,11 +941,13 @@ export default function Home() {
             onSunRemaining={handleSunRemaining}
             onSunTimeline={handleSunTimeline}
             shadowHandleRef={shadowHandleRef}
-            onSunDataSettled={() => { if (cafesLoadedRef.current) setIsCafeSymbolsUpdating(false); }}
-            onSunComputeStarted={() => { if (cafesLoadedRef.current && !isBackgroundMergeRef.current) setIsCafeSymbolsUpdating(true); }}
-            onInitialBounds={handleInitialBounds}
-            onBoundsChange={handleBoundsChange}
-            backgroundMerge={isBackgroundMerge}
+            onSunDataSettled={() => setIsCafeSymbolsUpdating(false)}
+            onClearSunData={(ids) => setSunRemaining(prev => {
+              const next = { ...prev };
+              ids.forEach(id => delete next[id]);
+              return next;
+            })}
+            activeDistrict={activeDistrict}
           />
 
           {hasTimeSlider && (

@@ -4,14 +4,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Cafe, TimeState, SunTimelineData } from "@/types";
-import { getSunPosition } from "@/lib/sun";
+import { getSunPosition, getSunTimes } from "@/lib/sun";
 import { calcShadowPolygon } from "@/lib/buildingShadow";
-import { BERLIN_BOUNDS, MAP_CENTER, MIN_MARKER_ZOOM, MIN_BUILDING_ZOOM, TILE_LAT, TILE_LNG, MAX_TILE_CACHE } from "@/lib/mapConfig";
 import type { BuildingFeature } from "@/app/api/buildings/route";
 
-// ─── spatial grid index ───────────────────────────────────────────────────────
-// Buckets buildings into ~440m cells so nearby lookups are O(1) instead of O(n).
-
+// ─── spatial grid for fast building lookups ───────────────────────────────────
+// Indexes buildings by grid cell so nearby-building queries are O(1) instead of O(n).
 const GRID_CELL = 0.004; // ~0.004° ≈ 440m per cell; shadow radius is ~200m
 
 class BuildingGrid {
@@ -46,22 +44,106 @@ class BuildingGrid {
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
-const BERLIN_CENTER = MAP_CENTER;
-const FALLBACK_HEIGHT = 18;
+// Full Berlin area (used for map bounds / fallback)
+const BERLIN_BOUNDS = {
+  south: 52.4546381, west: 13.3362902,
+  north: 52.5585856, east: 13.4721073,
+} as const;
 
-// OpenFreeMap bright — free, no API key, Google-Maps-like colours
+const BERLIN_CENTER: [number, number] = [
+  (BERLIN_BOUNDS.south + BERLIN_BOUNDS.north) / 2,
+  (BERLIN_BOUNDS.west  + BERLIN_BOUNDS.east)  / 2,
+];
+
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/bright";
+const FALLBACK_HEIGHT = 18;
+const _ZOOM15_PX = (Math.pow(2, 15) * 256) / 360; // px per degree at zoom 15 (4× fewer pixels than zoom 16)
 
-// Shadow canvas: fixed 2048×2048 px offscreen canvas whose geographic extent
-// follows the current viewport + a 50% buffer. Dynamic bounds are passed to the
-// shadow worker per render; the MapLibre canvas source coordinates are updated
-// after each render so the raster image maps to the right geo area.
-const SHADOW_CANVAS_SIZE = 2048;
-
-const EMPTY_FEATURE_COLLECTION: { type: "FeatureCollection"; features: never[] } = {
-  type: "FeatureCollection",
-  features: [],
+// Per-district config: shadow canvas bounds (with border buffer for accuracy),
+// map fly-to center [lng, lat], and buildings file path.
+type DistrictBounds = { south: number; west: number; north: number; east: number };
+// Bounds are computed from the exact OSM district polygon bboxes + 0.005° buffer
+// for shadow rendering accuracy at district edges. Centers are bbox midpoints.
+const DISTRICT_CONFIG: Record<string, {
+  bounds: DistrictBounds;
+  center: [number, number]; // [lng, lat] for MapLibre
+  file: string;
+}> = {
+  "Mitte": {
+    bounds: { south: 52.499, west: 13.361, north: 52.545, east: 13.434 },
+    center: [13.398, 52.522],
+    file: "/buildings-mitte.json",
+  },
+  "Kreuzberg": {
+    bounds: { south: 52.478, west: 13.363, north: 52.514, east: 13.458 },
+    center: [13.411, 52.496],
+    file: "/buildings-kreuzberg.json",
+  },
+  "Prenzlauer Berg": {
+    bounds: { south: 52.515, west: 13.392, north: 52.564, east: 13.477 },
+    center: [13.434, 52.539],
+    file: "/buildings-prenzlauer-berg.json",
+  },
+  "Schöneberg": {
+    bounds: { south: 52.450, west: 13.331, north: 52.510, east: 13.382 },
+    center: [13.356, 52.480],
+    file: "/buildings-schoeneberg.json",
+  },
 };
+
+function shadowCanvasSize(b: DistrictBounds) {
+  return {
+    w: Math.ceil((b.east - b.west) * _ZOOM15_PX),
+    h: Math.ceil((b.north - b.south) * _ZOOM15_PX),
+  };
+}
+
+function shadowCoords(b: DistrictBounds): [[number,number],[number,number],[number,number],[number,number]] {
+  return [
+    [b.west, b.north], [b.east, b.north],
+    [b.east, b.south], [b.west, b.south],
+  ];
+}
+
+function getCafeBounds(cafes: Cafe[]): [[number, number], [number, number]] | null {
+  if (cafes.length === 0) return null;
+
+  let south = cafes[0].lat;
+  let north = cafes[0].lat;
+  let west = cafes[0].lng;
+  let east = cafes[0].lng;
+
+  for (const cafe of cafes) {
+    south = Math.min(south, cafe.lat);
+    north = Math.max(north, cafe.lat);
+    west = Math.min(west, cafe.lng);
+    east = Math.max(east, cafe.lng);
+  }
+
+  const latPad = Math.max((north - south) * 0.12, 0.0035);
+  const lngPad = Math.max((east - west) * 0.12, 0.0035);
+
+  return [
+    [west - lngPad, south - latPad],
+    [east + lngPad, north + latPad],
+  ];
+}
+
+function tightenBounds(
+  bounds: [[number, number], [number, number]],
+  factor = 0.5,
+): [[number, number], [number, number]] {
+  const [[west, south], [east, north]] = bounds;
+  const centerLng = (west + east) / 2;
+  const centerLat = (south + north) / 2;
+  const halfWidth = ((east - west) * factor) / 2;
+  const halfHeight = ((north - south) * factor) / 2;
+
+  return [
+    [centerLng - halfWidth, centerLat - halfHeight],
+    [centerLng + halfWidth, centerLat + halfHeight],
+  ];
+}
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -69,6 +151,11 @@ export interface MapViewShadowHandle {
   updateShadow: (ts: TimeState) => void;
   startLiveLocation: () => void;
 }
+
+const EMPTY_FEATURE_COLLECTION: { type: "FeatureCollection"; features: never[] } = {
+  type: "FeatureCollection",
+  features: [],
+};
 
 interface LiveLocationState {
   lat: number;
@@ -79,28 +166,17 @@ interface LiveLocationState {
 interface MapViewProps {
   timeState: TimeState;
   cafes: Cafe[];
+  visibleCafeIds: Set<string>;
   sunRemaining: Record<string, number | null>;
   selectedCafe: Cafe | null;
   onCafeSelect: (cafe: Cafe | null) => void;
   onSunRemaining: (data: Record<string, number | null>) => void;
   onSunTimeline: (data: SunTimelineData) => void;
   onSunDataSettled?: () => void;
-  // Ref populated by MapView so callers can trigger shadow updates without
-  // going through React state (removes one full render-cycle of latency).
+  onClearSunData?: (ids: string[]) => void;
   shadowHandleRef?: React.MutableRefObject<MapViewShadowHandle | null>;
-  // Optional: subset of cafe IDs to show markers for (undefined = show all)
-  visibleCafeIds?: Set<string>;
+  activeDistrict: string;
   onUserLocationChange?: (location: { lat: number; lng: number } | null) => void;
-  // Called when a visible-cafe sun computation is about to start (use to show spinner)
-  onSunComputeStarted?: () => void;
-  // Called once when the map finishes loading, with the actual initial viewport bounds.
-  // Use this to start a targeted café fetch for exactly what is visible on screen.
-  onInitialBounds?: (bounds: { south: number; north: number; west: number; east: number }) => void;
-  // Called whenever the map is panned/zoomed (after moveend). Use to lazily load cafes for new viewport.
-  onBoundsChange?: (bounds: { south: number; north: number; west: number; east: number }) => void;
-  // When true, a café list update is a silent background merge — use incremental sun compute
-  // so newly added cafés don't re-queue a foreground batch and block onSunDataSettled.
-  backgroundMerge?: boolean;
 }
 
 // Sun computation has moved to src/workers/sun.worker.ts.
@@ -115,11 +191,13 @@ function renderShadowCanvas(
   canvas: HTMLCanvasElement,
   allBuildings: BuildingFeature[],
   timeState: TimeState,
-  bounds: { north: number; south: number; east: number; west: number },
+  bounds: DistrictBounds,
 ) {
   const ctx    = canvas.getContext("2d")!;
   const date   = new Date(`${timeState.date}T${timeState.time}:00`);
-  const sunPos = getSunPosition(BERLIN_CENTER[0], BERLIN_CENTER[1], date);
+  const centerLat = (bounds.north + bounds.south) / 2;
+  const centerLng = (bounds.west  + bounds.east)  / 2;
+  const sunPos = getSunPosition(centerLat, centerLng, date);
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = "#334155";
@@ -141,7 +219,7 @@ function renderShadowCanvas(
     if (shadow.length < 3) continue;
     let first = true;
     for (const [lat, lng] of shadow as [number, number][]) {
-      const x = (lng - bounds.west) / bW * canvas.width;
+      const x = (lng - bounds.west)  / bW * canvas.width;
       const y = (bounds.north - lat) / bH * canvas.height;
       if (first) { ctx.moveTo(x, y); first = false; }
       else         ctx.lineTo(x, y);
@@ -151,17 +229,15 @@ function renderShadowCanvas(
   ctx.fill(); // single fill → union of all polygons, no opacity stacking
 }
 
-// Approximate polygon area in m² using shoelace formula (equirectangular)
+// Flip [lat, lng] polygon to GeoJSON [lng, lat] and close the ring
 function polygonAreaM2(polygon: [number, number][]): number {
   let area = 0;
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
     area += (polygon[j][1] + polygon[i][1]) * (polygon[j][0] - polygon[i][0]);
   }
-  // At lat ~52.5: 1° lat ≈ 111 000 m, 1° lng ≈ 67 000 m
-  return (Math.abs(area) / 2) * 111_000 * 67_000;
+  return (Math.abs(area) / 2) * 111_000 * 74_000;
 }
 
-// Flip [lat, lng] polygon to GeoJSON [lng, lat] and close the ring
 function polygonToGeoJSON(polygon: [number, number][]): number[][] {
   const ring = polygon.map(([lat, lng]) => [lng, lat]);
   if (ring.length > 0 &&
@@ -269,7 +345,8 @@ function loadMoonEmoji(map: any) {
 // ─── component ────────────────────────────────────────────────────────────────
 
 export function MapView({
-  timeState, cafes, sunRemaining, selectedCafe, onCafeSelect, onSunRemaining, onSunTimeline, onSunDataSettled, shadowHandleRef, visibleCafeIds, onUserLocationChange, onSunComputeStarted, onInitialBounds, onBoundsChange, backgroundMerge,
+  timeState, cafes, visibleCafeIds, sunRemaining, selectedCafe, onCafeSelect, onSunRemaining, onSunTimeline,
+  onSunDataSettled, onClearSunData, shadowHandleRef, activeDistrict, onUserLocationChange,
 }: MapViewProps) {
   const mapRef         = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -278,15 +355,21 @@ export function MapView({
   const maplibreRef    = useRef<any>(null);
   const mapReadyRef    = useRef(false);  // true once map 'load' event fired
 
-  const shadowCanvasRef   = useRef<HTMLCanvasElement | null>(null);
-  const buildingCacheRef  = useRef<Map<number, BuildingFeature>>(new Map());
-  const buildingGridRef   = useRef<BuildingGrid | null>(null);
-  const shadowWorkerRef   = useRef<Worker | null>(null);
+  const shadowCanvasRef    = useRef<HTMLCanvasElement | null>(null);
+  const buildingGridRef    = useRef<BuildingGrid | null>(null);
+  const shadowWorkerRef    = useRef<Worker | null>(null);
   const shadowRenderInFlightRef = useRef(false);
   const pendingShadowTimeRef = useRef<TimeState | null>(null);
-  const sunDataTimeoutRef = useRef<number | null>(null);
-
-  const selectFromMapRef  = useRef(false);
+  const sunDataTimeoutRef  = useRef<number | null>(null);
+  const buildingCacheRef   = useRef<Map<number, BuildingFeature>>(new Map());
+  // Persistent per-district building cache so district switches are instant after first load
+  const districtBuildingCacheRef = useRef<Map<string, BuildingFeature[]>>(new Map());
+  const currentBoundsRef   = useRef<DistrictBounds>(DISTRICT_CONFIG["Mitte"].bounds);
+  const activeDistrictRef  = useRef(activeDistrict);
+  activeDistrictRef.current = activeDistrict;
+  // true when the current selectedCafe change came from a map marker click
+  // (not from the sidebar list) — used to skip zoom in the pan effect
+  const selectFromMapRef = useRef(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const locationMarkerRef = useRef<any>(null);
   const locationWatchIdRef = useRef<number | null>(null);
@@ -297,6 +380,8 @@ export function MapView({
   // Stable refs so event handlers always see current prop values
   const cafesRef          = useRef<Cafe[]>(cafes);
   cafesRef.current        = cafes;
+  const visibleCafeIdsRef = useRef<Set<string>>(visibleCafeIds);
+  visibleCafeIdsRef.current = visibleCafeIds;
   const sunRemainingRef   = useRef<Record<string, number | null>>(sunRemaining);
   sunRemainingRef.current = sunRemaining;
   const selectedCafeRef   = useRef<Cafe | null>(selectedCafe);
@@ -309,18 +394,12 @@ export function MapView({
   onSunTimelineRef.current = onSunTimeline;
   const onSunDataSettledRef = useRef(onSunDataSettled);
   onSunDataSettledRef.current = onSunDataSettled;
-  const onSunComputeStartedRef = useRef(onSunComputeStarted);
-  onSunComputeStartedRef.current = onSunComputeStarted;
-  const onInitialBoundsRef = useRef(onInitialBounds);
-  onInitialBoundsRef.current = onInitialBounds;
-  const onBoundsChangeRef = useRef(onBoundsChange);
-  onBoundsChangeRef.current = onBoundsChange;
+  const onClearSunDataRef   = useRef(onClearSunData);
+  onClearSunDataRef.current = onClearSunData;
   const timeStateRef      = useRef(timeState);
   timeStateRef.current    = timeState;
   // Cache: cafe id → inShadow, so selection changes don't recompute shadows
   const shadowCacheRef       = useRef<Map<string, boolean>>(new Map());
-  const visibleCafeIdsRef    = useRef<Set<string> | undefined>(visibleCafeIds);
-  visibleCafeIdsRef.current  = visibleCafeIds;
 
   // Sun computation worker — runs calcSunRemaining + calcDayTimeline off-thread.
   // Pend-drop pattern: only one compute in flight; latest pending dispatched when done.
@@ -329,34 +408,26 @@ export function MapView({
   const pendingSunComputeRef   = useRef<{ cafes: Cafe[]; date: string; time: string } | null>(null);
   const pendingBackgroundRef   = useRef<{ cafes: Cafe[]; date: string; time: string } | null>(null);
   const isBackgroundComputeRef = useRef(false);
+  // Separate worker for background computation of other districts.
+  // Never touches the main sunWorker so there's no init/compute ordering conflict.
+  const bgSunWorkerRef   = useRef<Worker | null>(null);
+  const bgSunQueueRef    = useRef<Array<{ buildings: BuildingFeature[]; cafes: Cafe[]; date: string; time: string }>>([]);
+  const bgSunInFlightRef = useRef(false);
 
-  // Viewport-based shadow bounds — updated on every render dispatch
-  type Bounds = { north: number; south: number; east: number; west: number };
-  const shadowBoundsRef       = useRef<Bounds | null>(null);
-  const shadowRenderBoundsRef = useRef<Bounds | null>(null); // bounds used for in-flight render
-
-  // Tile LRU cache
-  const loadedTilesRef   = useRef<Set<string>>(new Set());          // tile keys fetched or in-flight
-  const tileBuildingsRef = useRef<Map<string, BuildingFeature[]>>(new Map()); // key → buildings
-  const tileOrderRef     = useRef<string[]>([]);                      // LRU order (oldest first)
-  const tileLoadTimerRef = useRef<number | null>(null);               // debounce tile loading on moveend
-  const sunWorkerNeedsInitRef = useRef(false);                        // dirty: viewport changed, send fresh init before next sun compute
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [, setFetching]  = useState(false);
 
   // Internal ref always pointing to the latest shadow-update closure.
-  // Populated each render (functions are hoisted so updateShadowSource is
-  // already in scope). Exposed via shadowHandleRef so callers can bypass
-  // the React re-render cycle for instant slider response.
+  // Exposed via shadowHandleRef so callers can bypass the React cycle.
   const shadowUpdateFnRef = useRef<((ts: TimeState) => void) | null>(null);
   shadowUpdateFnRef.current = (ts: TimeState) => {
-    if (shadowWorkerRef.current) {
-      // Worker path ignores allBuildings — skip Array.from to avoid main-thread allocation
-      updateShadowSource([], ts);
-    } else {
-      const all = Array.from(buildingCacheRef.current.values());
-      if (all.length > 0) updateShadowSource(all, ts);
+    const canvas = shadowCanvasRef.current;
+    const worker = shadowWorkerRef.current;
+    if (!canvas || !worker) return;
+    pendingShadowTimeRef.current = ts;
+    if (!shadowRenderInFlightRef.current) {
+      const next = pendingShadowTimeRef.current;
+      pendingShadowTimeRef.current = null;
+      if (next) dispatchShadowRender(next);
     }
   };
   if (shadowHandleRef) {
@@ -367,64 +438,6 @@ export function MapView({
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────
-
-  // Viewport bounds + percentage buffer, clamped to Berlin's outer envelope.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function getViewportBounds(map: any, bufferFraction = 0.5) {
-    const b = map.getBounds();
-    const n = b.getNorth(), s = b.getSouth();
-    const e = b.getEast(),  w = b.getWest();
-    const dLat = (n - s) * bufferFraction;
-    const dLng = (e - w) * bufferFraction;
-    return {
-      north: Math.min(n + dLat, BERLIN_BOUNDS.north + 0.05),
-      south: Math.max(s - dLat, BERLIN_BOUNDS.south - 0.05),
-      east:  Math.min(e + dLng, BERLIN_BOUNDS.east  + 0.05),
-      west:  Math.max(w - dLng, BERLIN_BOUNDS.west  - 0.05),
-    };
-  }
-
-  // Return all tile keys that overlap the given bounds.
-  function getTilesForBounds(bounds: { north: number; south: number; east: number; west: number }): string[] {
-    const keys: string[] = [];
-    const r0 = Math.floor(bounds.south / TILE_LAT);
-    const r1 = Math.floor(bounds.north / TILE_LAT);
-    const c0 = Math.floor(bounds.west  / TILE_LNG);
-    const c1 = Math.floor(bounds.east  / TILE_LNG);
-    for (let r = r0; r <= r1; r++)
-      for (let c = c0; c <= c1; c++)
-        keys.push(`${r},${c}`);
-    return keys;
-  }
-
-  // Geographic bbox for a tile key (with a small overlap to catch edge buildings).
-  function tileBoundsForKey(key: string) {
-    const [r, c] = key.split(",").map(Number);
-    return {
-      south: r * TILE_LAT - 0.001,
-      north: (r + 1) * TILE_LAT + 0.001,
-      west:  c * TILE_LNG - 0.001,
-      east:  (c + 1) * TILE_LNG + 0.001,
-    };
-  }
-
-  // Move a tile to the "most recently used" end of the LRU list.
-  function touchTile(key: string) {
-    const idx = tileOrderRef.current.indexOf(key);
-    if (idx !== -1) tileOrderRef.current.splice(idx, 1);
-    tileOrderRef.current.push(key);
-  }
-
-  // Evict the least-recently-used tiles until we're under the cache limit.
-  function evictLruTiles() {
-    while (tileOrderRef.current.length > MAX_TILE_CACHE) {
-      const evictKey = tileOrderRef.current.shift()!;
-      const evicted  = tileBuildingsRef.current.get(evictKey);
-      if (evicted) for (const b of evicted) buildingCacheRef.current.delete(b.id);
-      tileBuildingsRef.current.delete(evictKey);
-      loadedTilesRef.current.delete(evictKey);
-    }
-  }
 
   function clearScheduledSunData() {
     if (sunDataTimeoutRef.current !== null) {
@@ -441,37 +454,33 @@ export function MapView({
     }, delay);
   }
 
-  // True if we have loaded building tiles for the area around this café.
-  // Cafés in unloaded tile areas must be skipped — the worker has no buildings
-  // for them and would compute them as sunny (no shadows), producing wrong results.
-  function isCafeTileLoaded(cafe: Cafe): boolean {
-    const r = Math.floor(cafe.lat / TILE_LAT);
-    const c = Math.floor(cafe.lng / TILE_LNG);
-    return tileBuildingsRef.current.has(`${r},${c}`);
+  // ── background district worker helpers ────────────────────────────────────
+  // The bg worker is completely independent from the main sun worker.
+  // It processes other districts one at a time using a simple queue.
+
+  function dispatchNextBgDistrict() {
+    if (bgSunInFlightRef.current) return;
+    const next = bgSunQueueRef.current.shift();
+    if (!next) return;
+    bgSunInFlightRef.current = true;
+    bgSunWorkerRef.current?.postMessage({ type: 'init', buildings: next.buildings });
+    bgSunWorkerRef.current?.postMessage({ type: 'compute', cafes: next.cafes, date: next.date, time: next.time });
   }
 
-  // Send ALL cached buildings to the sun worker if the dirty flag is set.
-  // We must send the full cache (not just viewport) because updateCafesSource
-  // computes all district-filtered cafés, many of which are outside the viewport.
-  // Sending only viewport buildings causes every out-of-viewport café to appear
-  // sunny (worker finds no buildings near them → no shadow intersection).
-  function maybeInitSunWorker(worker: Worker) {
-    if (!sunWorkerNeedsInitRef.current) return;
-    sunWorkerNeedsInitRef.current = false;
-    const allBuildings = Array.from(buildingCacheRef.current.values());
-    if (allBuildings.length > 0) worker.postMessage({ type: "init", buildings: allBuildings });
+  function scheduleBgDistrictComputes(date: string, time: string) {
+    bgSunQueueRef.current = [];
+    for (const [district, districtBuildings] of Array.from(districtBuildingCacheRef.current)) {
+      if (district === activeDistrictRef.current) continue;
+      const districtCafes = cafesRef.current.filter((c) => (c.district ?? 'Berlin') === district);
+      if (districtCafes.length > 0)
+        bgSunQueueRef.current.push({ buildings: districtBuildings, cafes: districtCafes, date, time });
+    }
+    dispatchNextBgDistrict();
   }
 
-  // Dispatch a sun-compute job to the worker using pend-drop.
-  // If a computation is already in flight, the new request is queued; once
-  // the current one finishes the latest queued request is sent (stale ones dropped).
   function dispatchSunCompute(cafes: Cafe[], date: string, time: string) {
     const worker = sunWorkerRef.current;
     if (!worker) return;
-    // Always send a fresh init before compute when the viewport has shifted.
-    // Both messages are enqueued synchronously so the worker processes them
-    // in order — prevents the "all sunny" race when time changes mid-pan.
-    maybeInitSunWorker(worker);
     pendingSunComputeRef.current = { cafes, date, time };
     if (!sunComputeInFlightRef.current) {
       const next = pendingSunComputeRef.current;
@@ -486,19 +495,14 @@ export function MapView({
   function dispatchShadowRender(ts: TimeState) {
     const worker = shadowWorkerRef.current;
     const canvas = shadowCanvasRef.current;
-    const map    = mapInstanceRef.current;
-    if (!worker || !canvas || !map || !mapReadyRef.current) return;
-
-    const bounds = getViewportBounds(map, 0.5);
-    shadowBoundsRef.current       = bounds;
-    shadowRenderBoundsRef.current = bounds; // snapshot for onmessage handler
+    if (!worker || !canvas) return;
 
     shadowRenderInFlightRef.current = true;
     worker.postMessage({
       type: "render",
       timeState: ts,
-      bounds,
-      width:  canvas.width,
+      bounds: currentBoundsRef.current,
+      width: canvas.width,
       height: canvas.height,
     });
   }
@@ -513,7 +517,7 @@ export function MapView({
     const source = map.getSource("cafes-source");
     if (!source) return;
 
-    const selId     = selectedCafeRef.current?.id ?? null;
+    const selId      = selectedCafeRef.current?.id ?? null;
     const visibleIds = visibleCafeIdsRef.current;
     const visibleCafes = cafesRef.current.filter((c) => !visibleIds || visibleIds.has(c.id));
     const features = visibleCafes.map((cafe) => {
@@ -532,19 +536,19 @@ export function MapView({
 
     if (!recomputeSunData) return;
 
-    // Dispatch to background worker — no main-thread computation, no idle scheduling.
-    const ts = timeStateRef.current;
     // Phase 1: visible cafés → fast update for map + spinner.
     // Phase 2 (background): remaining cafés → fills sidebar/search results.
-    // Only compute cafés whose tile is loaded — cafés in unloaded areas have no
-    // buildings in the worker and would be incorrectly returned as sunny.
+    const ts = timeStateRef.current;
     const cafesToCompute = incrementalOnly
-      ? visibleCafes.filter((c) => isCafeTileLoaded(c) && !Object.prototype.hasOwnProperty.call(sunRemainingRef.current, c.id))
-      : visibleCafes.filter(isCafeTileLoaded);
+      ? visibleCafes.filter((c) => !Object.prototype.hasOwnProperty.call(sunRemainingRef.current, c.id))
+      : visibleCafes;
 
     if (!incrementalOnly) {
+      // Phase 2: non-visible cafés in the active district (restaurant filter etc.)
       const visibleIds = new Set(visibleCafes.map((c) => c.id));
-      const bgCafes = cafesRef.current.filter((c) => !visibleIds.has(c.id) && isCafeTileLoaded(c));
+      const bgCafes = cafesRef.current.filter(
+        (c) => !visibleIds.has(c.id) && (c.district ?? 'Berlin') === activeDistrictRef.current
+      );
       pendingBackgroundRef.current = bgCafes.length > 0
         ? { cafes: bgCafes, date: ts.date, time: ts.time }
         : null;
@@ -552,7 +556,6 @@ export function MapView({
 
     if (cafesToCompute.length === 0) {
       onSunDataSettledRef.current?.();
-      // Still kick off background batch if any
       const bg = pendingBackgroundRef.current;
       if (bg) {
         pendingBackgroundRef.current = null;
@@ -563,10 +566,6 @@ export function MapView({
     }
 
     isBackgroundComputeRef.current = false;
-    // Only show spinner when cafe markers are actually visible (zoom ≥ MIN_MARKER_ZOOM).
-    // Below that zoom markers are hidden anyway — no need to block the UI.
-    const atMarkerZoom = (mapInstanceRef.current?.getZoom() ?? 0) >= MIN_MARKER_ZOOM;
-    if (!incrementalOnly && atMarkerZoom) onSunComputeStartedRef.current?.();
     dispatchSunCompute(cafesToCompute, ts.date, ts.time);
   }
 
@@ -577,8 +576,6 @@ export function MapView({
     if (!canvas || !map || !mapReadyRef.current) return;
 
     if (shadowWorkerRef.current) {
-      // Keep at most one render in flight; if the slider moves again, only the
-      // most recent time is rendered next instead of queueing stale frames.
       pendingShadowTimeRef.current = ts;
       if (!shadowRenderInFlightRef.current) {
         const nextTime = pendingShadowTimeRef.current;
@@ -589,8 +586,7 @@ export function MapView({
     }
 
     // Fallback: render synchronously on main thread
-    const bounds = shadowBoundsRef.current ?? BERLIN_BOUNDS;
-    renderShadowCanvas(canvas, allBuildings, ts, bounds);
+    renderShadowCanvas(canvas, allBuildings, ts, currentBoundsRef.current);
     map.triggerRepaint();
   }
 
@@ -599,117 +595,114 @@ export function MapView({
     updateCafesSource(false);
   }
 
-  // Fetch building tiles for the current viewport (plus buffer). Missing tiles are
-  // fetched in parallel via /api/buildings?bbox=…. Results are merged into
-  // buildingCacheRef and both workers are re-initialised with the full set.
-  async function loadTilesForViewport() {
+  function applyDistrictBuildings(district: string, buildings: BuildingFeature[]) {
+    const config = DISTRICT_CONFIG[district];
+    if (!config) return;
+
+    const { w, h } = shadowCanvasSize(config.bounds);
+    const canvas = shadowCanvasRef.current;
+    if (canvas) { canvas.width = w; canvas.height = h; }
+    currentBoundsRef.current = config.bounds;
+
+    buildingCacheRef.current.clear();
+    buildings.forEach((b) => buildingCacheRef.current.set(b.id, b));
+    buildingGridRef.current = new BuildingGrid(buildings);
+
+    // Cancel any in-flight background district work — it would use wrong buildings.
+    bgSunQueueRef.current = [];
+
+    // Clear stale sun data for this district so cafés default to shadow
+    // until freshly computed — prevents the "all sunny" flash on district switch.
+    const districtCafeIds = cafesRef.current
+      .filter((c) => (c.district ?? 'Berlin') === district)
+      .map((c) => c.id);
+    districtCafeIds.forEach((id) => shadowCacheRef.current.delete(id));
+    onClearSunDataRef.current?.(districtCafeIds);
+
+    // Send buildings to both workers so they have them ready
+    shadowWorkerRef.current?.postMessage({ type: 'init', buildings });
+    sunWorkerRef.current?.postMessage({ type: 'init', buildings });
+
     const map = mapInstanceRef.current;
     if (!map || !mapReadyRef.current) return;
-    if (map.getZoom() < MIN_BUILDING_ZOOM) return;
 
-    const vpBounds = getViewportBounds(map, 0.3);
-    const tileKeys = getTilesForBounds(vpBounds);
-
-    // Keep existing tiles fresh in LRU
-    for (const key of tileKeys) {
-      if (tileBuildingsRef.current.has(key)) touchTile(key);
+    const source = map.getSource("buildings-source");
+    if (source) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (source as any).setData({
+        type: "FeatureCollection",
+        features: buildings
+          .filter((b) => polygonAreaM2(b.polygon as [number, number][]) >= 80)
+          .map((b) => ({
+            type: "Feature",
+            geometry: { type: "Polygon", coordinates: [polygonToGeoJSON(b.polygon as [number,number][])] },
+            properties: { id: b.id },
+          })),
+      });
     }
 
-    const missing = tileKeys.filter((k) => !loadedTilesRef.current.has(k));
-    if (missing.length === 0) {
-      // All tiles cached: update shadow worker with current viewport buildings
-      // (shadow is viewport-based; worker may not have seen this area yet).
-      const allBuildings = Array.from(buildingCacheRef.current.values());
-      const wb = getViewportBounds(map, 0.5);
-      const vpBuildings = allBuildings.filter((b) => {
-        const [bLat, bLng] = b.polygon[0];
-        return bLat >= wb.south && bLat <= wb.north && bLng >= wb.west && bLng <= wb.east;
-      });
-      if (vpBuildings.length > 0) shadowWorkerRef.current?.postMessage({ type: "init", buildings: vpBuildings });
-      updateShadowSource([], timeStateRef.current);
-      // Sun dots are already correct (computed when tiles first loaded); no recompute needed.
+    const shadowSource = map.getSource("shadow-source");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (shadowSource as any)?.setCoordinates?.(shadowCoords(config.bounds));
+
+    updateShadowSource(buildings, timeStateRef.current);
+    updateCafesSource(true);
+    setFetching(false);
+  }
+
+  function loadDistrictBuildings(district: string) {
+    const config = DISTRICT_CONFIG[district];
+    if (!config) return;
+
+    // If already cached, apply instantly — no network fetch needed
+    const cached = districtBuildingCacheRef.current.get(district);
+    if (cached) {
+      applyDistrictBuildings(district, cached);
       return;
     }
 
-    // Mark as in-flight so concurrent calls don't double-fetch
-    for (const key of missing) loadedTilesRef.current.add(key);
-
-    const results = await Promise.allSettled(
-      missing.map(async (key) => {
-        // Static pre-generated tile (fast, no server round-trip to Overpass)
-        const staticKey = key.replace(",", "_");
-        try {
-          const r = await fetch(`/tiles/${staticKey}.json`);
-          if (r.ok) {
-            const { buildings } = await r.json() as { buildings: BuildingFeature[] };
-            return { key, buildings };
-          }
-        } catch { /* network error on static file — fall through to API */ }
-
-        // Fallback: live /api/buildings (for areas without pre-generated tiles)
-        const tb = tileBoundsForKey(key);
-        try {
-          const r = await fetch(`/api/buildings?bbox=${tb.south},${tb.west},${tb.north},${tb.east}`);
-          if (!r.ok) throw new Error(`${r.status}`);
-          const { buildings } = await r.json() as { buildings: BuildingFeature[] };
-          return { key, buildings };
-        } catch (err) {
-          loadedTilesRef.current.delete(key); // allow retry on next pan
-          throw err;
+    setFetching(true);
+    fetch(config.file)
+      .then((r) => r.json())
+      .then(({ buildings }: { buildings: BuildingFeature[] }) => {
+        districtBuildingCacheRef.current.set(district, buildings);
+        if (activeDistrictRef.current === district) {
+          applyDistrictBuildings(district, buildings);
         }
       })
-    );
+      .catch(() => setFetching(false));
+  }
 
-    let anyNew = false;
-    for (const res of results) {
-      if (res.status !== "fulfilled") continue;
-      const { key, buildings } = res.value;
-      tileBuildingsRef.current.set(key, buildings);
-      touchTile(key);
-      for (const b of buildings) buildingCacheRef.current.set(b.id, b);
-      anyNew = true;
-    }
+  function prefetchDistrictBuildings(district: string) {
+    if (districtBuildingCacheRef.current.has(district)) return;
+    const config = DISTRICT_CONFIG[district];
+    if (!config) return;
+    fetch(config.file)
+      .then((r) => r.json())
+      .then(({ buildings }: { buildings: BuildingFeature[] }) => {
+        districtBuildingCacheRef.current.set(district, buildings);
+      })
+      .catch(() => {});
+  }
 
-    evictLruTiles();
-    if (!mapReadyRef.current) return;
-
-    const allBuildings = Array.from(buildingCacheRef.current.values());
-    buildingGridRef.current = new BuildingGrid(allBuildings);
-
-    // New tiles arrived — send viewport buildings to shadow worker and mark sun
-    // worker dirty. The dirty flag ensures dispatchSunCompute sends a fresh
-    // init synchronously before the compute message, fixing the race where a
-    // time-change fires before tile loading completes.
-    const wb = getViewportBounds(map, 0.5);
-    const vpBuildings = allBuildings.filter((b) => {
-      const [bLat, bLng] = b.polygon[0];
-      return bLat >= wb.south && bLat <= wb.north && bLng >= wb.west && bLng <= wb.east;
-    });
-    if (vpBuildings.length > 0) shadowWorkerRef.current?.postMessage({ type: "init", buildings: vpBuildings });
-
-    if (anyNew) {
-      const bldgSrc = mapInstanceRef.current?.getSource("buildings-source") as any;
-      if (bldgSrc) {
-        bldgSrc.setData({
+  function loadGreenAreas() {
+    fetch("/green-areas-cache.json")
+      .then((r) => r.json())
+      .then(({ areas }: { areas: { id: number; polygon: [number, number][] }[] }) => {
+        const map = mapInstanceRef.current;
+        if (!map || !mapReadyRef.current) return;
+        const source = map.getSource("green-areas-source");
+        if (!source) return;
+        source.setData({
           type: "FeatureCollection",
-          features: allBuildings
-            .filter((b) => polygonAreaM2(b.polygon as [number, number][]) >= 80)
-            .map((b) => ({
-              type: "Feature",
-              geometry: { type: "Polygon", coordinates: [polygonToGeoJSON(b.polygon as [number, number][])] },
-              properties: { id: b.id },
-            })),
+          features: areas.map((a) => ({
+            type: "Feature",
+            geometry: { type: "Polygon", coordinates: [polygonToGeoJSON(a.polygon)] },
+            properties: { id: a.id },
+          })),
         });
-      }
-      // Mark sun worker dirty: next dispatchSunCompute will send init first.
-      sunWorkerNeedsInitRef.current = true;
-    }
-
-    // Re-render shadow for new viewport.
-    updateShadowSource([], timeStateRef.current);
-    // Trigger sun recompute (spinner shown); dispatchSunCompute will send
-    // fresh init before the compute because sunWorkerNeedsInitRef is set.
-    if (anyNew) updateCafesSource(true);
+      })
+      .catch(() => {});
   }
 
   function updateLiveLocationVisual(state: LiveLocationState) {
@@ -811,63 +804,69 @@ export function MapView({
     let mounted = true;
 
     // Create shadow worker
-    const worker = typeof window !== "undefined"
-      ? new Worker(new URL("../workers/shadow.worker.ts", import.meta.url))
+    const worker = typeof window !== 'undefined'
+      ? new Worker(new URL('../workers/shadow.worker.ts', import.meta.url))
       : null;
     shadowWorkerRef.current = worker;
 
+    // Background sun worker — handles other districts independently
+    const bgSunWorker = typeof window !== 'undefined'
+      ? new Worker(new URL('../workers/sun.worker.ts', import.meta.url))
+      : null;
+    bgSunWorkerRef.current = bgSunWorker;
+
+    if (bgSunWorker) {
+      bgSunWorker.onmessage = (e: MessageEvent) => {
+        if (e.data.type !== 'computed') return;
+        bgSunInFlightRef.current = false;
+        const { remaining, timelines } = e.data as {
+          remaining: Record<string, number | null>;
+          timelines: import('@/types').SunTimelineData;
+        };
+        onSunRemainingRef.current(remaining);
+        onSunTimelineRef.current(timelines);
+        for (const [id, val] of Object.entries(remaining))
+          shadowCacheRef.current.set(id, val === null);
+        // Process next district in queue
+        dispatchNextBgDistrict();
+      };
+    }
+
     if (worker) {
       worker.onmessage = (e: MessageEvent) => {
-        if (e.data.type !== "rendered") return;
+        if (e.data.type !== 'rendered') return;
         const bitmap: ImageBitmap = e.data.bitmap;
         const canvas = shadowCanvasRef.current;
         const map = mapInstanceRef.current;
         if (!canvas || !map || !mapReadyRef.current) { bitmap.close(); return; }
-        const ctx = canvas.getContext("2d");
+        const ctx = canvas.getContext('2d');
         if (!ctx) { bitmap.close(); return; }
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(bitmap, 0, 0);
         bitmap.close();
-
-        // Update the canvas source coordinates to match what was just rendered.
-        // Using the snapshotted bounds from when this render was dispatched avoids
-        // placing old canvas content at new viewport coordinates.
-        const rendered = shadowRenderBoundsRef.current;
-        if (rendered) {
-          const src = map.getSource("shadow-source") as any;
-          src?.setCoordinates([
-            [rendered.west, rendered.north],
-            [rendered.east, rendered.north],
-            [rendered.east, rendered.south],
-            [rendered.west, rendered.south],
-          ]);
-        }
-
         map.triggerRepaint();
 
         shadowRenderInFlightRef.current = false;
         const nextTime = pendingShadowTimeRef.current;
         pendingShadowTimeRef.current = null;
-        if (nextTime) {
-          dispatchShadowRender(nextTime);
-        }
+        if (nextTime) dispatchShadowRender(nextTime);
       };
     }
 
     // Create sun computation worker
-    const sunWorker = typeof window !== "undefined"
-      ? new Worker(new URL("../workers/sun.worker.ts", import.meta.url))
+    const sunWorker = typeof window !== 'undefined'
+      ? new Worker(new URL('../workers/sun.worker.ts', import.meta.url))
       : null;
     sunWorkerRef.current = sunWorker;
 
     if (sunWorker) {
       sunWorker.onmessage = (e: MessageEvent) => {
-        if (e.data.type !== "computed") return;
+        if (e.data.type !== 'computed') return;
         sunComputeInFlightRef.current = false;
 
         const { remaining, timelines } = e.data as {
           remaining: Record<string, number | null>;
-          timelines: import("@/types").SunTimelineData;
+          timelines: import('@/types').SunTimelineData;
         };
 
         onSunRemainingRef.current(remaining);
@@ -877,17 +876,17 @@ export function MapView({
 
         // Rebuild map source with accurate shadow state
         const map = mapInstanceRef.current;
-        const src  = map?.getSource("cafes-source");
+        const src  = map?.getSource('cafes-source');
         if (src && mapReadyRef.current) {
-          const selId     = selectedCafeRef.current?.id ?? null;
-          const visIds    = visibleCafeIdsRef.current;
-          const allCafes  = cafesRef.current.filter((c) => !visIds || visIds.has(c.id));
+          const selId    = selectedCafeRef.current?.id ?? null;
+          const visIds   = visibleCafeIdsRef.current;
+          const allCafes = cafesRef.current.filter((c) => !visIds || visIds.has(c.id));
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (src as any).setData({
-            type: "FeatureCollection",
+            type: 'FeatureCollection',
             features: allCafes.map((cafe) => ({
-              type: "Feature",
-              geometry: { type: "Point", coordinates: [cafe.lng, cafe.lat] },
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [cafe.lng, cafe.lat] },
               properties: {
                 id: cafe.id, name: cafe.name,
                 inShadow: shadowCacheRef.current.get(cafe.id) ?? true,
@@ -900,28 +899,26 @@ export function MapView({
         isBackgroundComputeRef.current = false;
 
         // Drain pending (time-change) request first; if none, run background batch.
-        // IMPORTANT: only signal settled when there is no further pending compute —
-        // otherwise the first result (stale) would hide the spinner while the dots
-        // still show wrong data until the next compute finishes.
+        // Only settle after the final compute — not on intermediate stale results.
         const next = pendingSunComputeRef.current;
         pendingSunComputeRef.current = null;
         if (next) {
-          pendingBackgroundRef.current = null; // stale background, discard
-          // Re-check dirty flag: viewport may have changed while previous compute was in flight.
-          maybeInitSunWorker(sunWorker);
+          pendingBackgroundRef.current = null;
           sunComputeInFlightRef.current = true;
-          sunWorker.postMessage({ type: "compute", cafes: next.cafes, date: next.date, time: next.time });
+          sunWorker.postMessage({ type: 'compute', cafes: next.cafes, date: next.date, time: next.time });
           // Don't settle yet — another compute is in flight
         } else {
           if (!wasBackground) {
             onSunDataSettledRef.current?.();
+            // Kick off background computation for other districts
+            scheduleBgDistrictComputes(timeStateRef.current.date, timeStateRef.current.time);
           }
           const bg = pendingBackgroundRef.current;
           if (bg) {
             pendingBackgroundRef.current = null;
             isBackgroundComputeRef.current = true;
             sunComputeInFlightRef.current = true;
-            sunWorker.postMessage({ type: "compute", cafes: bg.cafes, date: bg.date, time: bg.time });
+            sunWorker.postMessage({ type: 'compute', cafes: bg.cafes, date: bg.date, time: bg.time });
           }
         }
       };
@@ -934,15 +931,11 @@ export function MapView({
       const map = new maplibregl.Map({
         container: mapRef.current,
         style: MAP_STYLE,
-        center: [MAP_CENTER[1], MAP_CENTER[0]], // MapLibre: [lng, lat]
-        zoom: 12,
+        center: DISTRICT_CONFIG[activeDistrictRef.current]?.center ?? [13.397, 52.520], // [lng, lat]
+        zoom: 14,
         minZoom: 10,
         maxZoom: 19,
         attributionControl: false,
-        maxBounds: [
-          [BERLIN_BOUNDS.west - 0.1, BERLIN_BOUNDS.south - 0.1],
-          [BERLIN_BOUNDS.east + 0.1, BERLIN_BOUNDS.north + 0.1],
-        ],
       });
 
       mapInstanceRef.current = map;
@@ -950,13 +943,6 @@ export function MapView({
       map.on("load", () => {
         if (!mounted) return;
         mapReadyRef.current = true;
-
-        // Report the actual initial viewport so page.tsx can start a targeted café fetch.
-        const ib = map.getBounds();
-        onInitialBoundsRef.current?.({
-          south: ib.getSouth(), north: ib.getNorth(),
-          west: ib.getWest(),   east: ib.getEast(),
-        });
 
         // Find the first symbol layer in the base style (road/place labels, icons).
         // All our custom layers are inserted before it so labels always render on top.
@@ -966,11 +952,10 @@ export function MapView({
         const before = firstSymbolId; // undefined is fine — appends to end if no symbols
 
         // Café dots are inserted before the place/district label layer so they
-        // render above road names but below Viertel/suburb labels.
+        // render above road names but below Kiez/suburb labels.
         const beforePlace = map.getLayer("label_other") ? "label_other" : before;
 
         // ── hide POI layers ────────────────────────────────────────────────
-        // Hide all shop/restaurant/icon POI layers – keep only road & place labels.
         map.getStyle().layers.forEach((l: { id: string; type: string; "source-layer"?: string }) => {
           if (l["source-layer"] === "poi") {
             map.setLayoutProperty(l.id, "visibility", "none");
@@ -978,7 +963,6 @@ export function MapView({
         });
 
         // ── filter place labels ────────────────────────────────────────────
-        // Hide neighbourhood/quarter labels – keep suburb/Bezirke.
         if (map.getLayer("label_other")) {
           map.setFilter("label_other", [
             "match", ["get", "class"],
@@ -989,31 +973,51 @@ export function MapView({
           ]);
         }
 
-        // ── shadow canvas ──────────────────────────────────────────────────
+        // ── shadow canvas — sized for the initial district (Mitte) ────────
+
+        const initBounds = DISTRICT_CONFIG[activeDistrictRef.current]?.bounds
+          ?? DISTRICT_CONFIG["Mitte"].bounds;
+        const { w: initW, h: initH } = shadowCanvasSize(initBounds);
+        currentBoundsRef.current = initBounds;
 
         const shadowCanvas = document.createElement("canvas");
-        shadowCanvas.width  = SHADOW_CANVAS_SIZE;
-        shadowCanvas.height = SHADOW_CANVAS_SIZE;
+        shadowCanvas.width  = initW;
+        shadowCanvas.height = initH;
         shadowCanvasRef.current = shadowCanvas;
-
-        // Initial shadow viewport covers the starting map view + 50% buffer.
-        const initShadowBounds = getViewportBounds(map, 0.5);
-        shadowBoundsRef.current = initShadowBounds;
 
         // ── sources ────────────────────────────────────────────────────────
 
-        // Shadow source: offscreen canvas raster. Coordinates are updated after
-        // each render dispatch so the image always maps to the correct geo area.
+        map.addSource("green-areas-source", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+
+        // Static sunny-district overlay (amber rectangle over full Berlin area)
+        map.addSource("sunny-overlay-source", {
+          type: "geojson",
+          data: {
+            type: "Feature",
+            geometry: {
+              type: "Polygon",
+              coordinates: [[
+                [BERLIN_BOUNDS.west,  BERLIN_BOUNDS.south],
+                [BERLIN_BOUNDS.east,  BERLIN_BOUNDS.south],
+                [BERLIN_BOUNDS.east,  BERLIN_BOUNDS.north],
+                [BERLIN_BOUNDS.west,  BERLIN_BOUNDS.north],
+                [BERLIN_BOUNDS.west,  BERLIN_BOUNDS.south],
+              ]],
+            },
+            properties: {},
+          },
+        });
+
+        // Shadow source: raster image from the offscreen canvas.
+        // Image sources avoid WebGL fill-opacity accumulation from overlapping polygons.
         map.addSource("shadow-source", {
           type: "canvas",
           canvas: shadowCanvas,
           animate: true,
-          coordinates: [
-            [initShadowBounds.west, initShadowBounds.north],
-            [initShadowBounds.east, initShadowBounds.north],
-            [initShadowBounds.east, initShadowBounds.south],
-            [initShadowBounds.west, initShadowBounds.south],
-          ],
+          coordinates: shadowCoords(initBounds),
         });
 
         map.addSource("buildings-source", {
@@ -1033,16 +1037,29 @@ export function MapView({
 
         // ── layers (z-order: bottom → top, all inserted before base labels) ─
 
+        map.addLayer({
+          id: "green-areas",
+          type: "fill",
+          source: "green-areas-source",
+          paint: { "fill-color": "#aad3a0", "fill-opacity": 0.55 },
+        }, before);
+
+        map.addLayer({
+          id: "sunny-overlay",
+          type: "fill",
+          source: "sunny-overlay-source",
+          paint: { "fill-color": "#fde68a", "fill-opacity": 0.25 },
+        }, before);
+
         // Raster shadow layer — opacity here is the only transparency applied;
         // the canvas itself is fully opaque dark pixels on transparent background.
+        // raster-resampling: nearest prevents bilinear blur when zoomed in past
+        // the canvas resolution, keeping shadow edges crisp at all zoom levels.
         map.addLayer({
           id: "shadows",
           type: "raster",
           source: "shadow-source",
-          paint: {
-            "raster-opacity": 0.55,
-            "raster-resampling": "linear",
-          },
+          paint: { "raster-opacity": 0.55 },
         }, before);
 
         map.addLayer({
@@ -1154,7 +1171,6 @@ export function MapView({
           paint: {
             "circle-radius": 16,
             "circle-opacity": 0,
-            "circle-stroke-width": 0,
             "circle-stroke-opacity": 0,
           },
         }, beforePlace);
@@ -1182,49 +1198,30 @@ export function MapView({
 
         // ── viewport events ───────────────────────────────────────────────
 
-        // Toggle marker + shadow visibility based on zoom level.
-        const markerLayers = ["cafes", "cafes-sunny", "cafes-selected-shadow", "cafes-selected-sunny", "cafes-hit"];
-        const applyZoomVisibility = () => {
-          const zoom = map.getZoom();
-          const markerVis = zoom >= MIN_MARKER_ZOOM ? "visible" : "none";
-          const shadowVis = zoom >= MIN_BUILDING_ZOOM ? "visible" : "none";
-          for (const id of markerLayers) {
-            if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", markerVis);
-          }
-          if (map.getLayer("shadows")) map.setLayoutProperty("shadows", "visibility", shadowVis);
-        };
-        map.on("zoom", applyZoomVisibility);
-
-        // After any pan/zoom: refresh café dots, re-render shadow for new viewport,
-        // and load any building tiles that entered the viewport.
-        // Tile loading is debounced so rapid panning/zooming doesn't fire many
-        // parallel fetch storms before the user has settled on a position.
+        // Recompute viewport shadows and redraw café dots after any pan/zoom.
+        // Shadow visual layer needs no repositioning — MapLibre handles that.
         map.on("moveend", () => {
-          // Notify page of new bounds so it can lazily merge cafes for new viewport.
-          const mb = map.getBounds();
-          onBoundsChangeRef.current?.({ south: mb.getSouth(), north: mb.getNorth(), west: mb.getWest(), east: mb.getEast() });
-          // Viewport shifted: mark sun worker dirty so the next time-change
-          // compute sends fresh viewport buildings before running.
-          sunWorkerNeedsInitRef.current = true;
           refreshViewportShadows();
-          updateShadowSource([], timeStateRef.current);
-          if (tileLoadTimerRef.current !== null) window.clearTimeout(tileLoadTimerRef.current);
-          tileLoadTimerRef.current = window.setTimeout(() => {
-            tileLoadTimerRef.current = null;
-            loadTilesForViewport();
-          }, 300);
         });
 
         // ── load data ─────────────────────────────────────────────────────
 
-        loadTilesForViewport(); // async — fires and forgets; triggers shadow + sun on completion
+        loadDistrictBuildings(activeDistrictRef.current);
+        loadGreenAreas();
         if (locationStateRef.current) updateLiveLocationVisual(locationStateRef.current);
+
+        // Pre-fetch all other district building files in the background
+        // so switching districts later is instant (no network wait).
+        Object.keys(DISTRICT_CONFIG).forEach((d) => {
+          if (d !== activeDistrictRef.current) prefetchDistrictBuildings(d);
+        });
       });
     });
 
     return () => {
       mounted = false;
       mapReadyRef.current = false;
+      clearScheduledSunData();
       shadowRenderInFlightRef.current = false;
       pendingShadowTimeRef.current = null;
       if (locationWatchIdRef.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
@@ -1238,6 +1235,8 @@ export function MapView({
       shadowWorkerRef.current = null;
       sunWorkerRef.current?.terminate();
       sunWorkerRef.current = null;
+      bgSunWorkerRef.current?.terminate();
+      bgSunWorkerRef.current = null;
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
@@ -1248,9 +1247,13 @@ export function MapView({
 
   // ── redraw when time changes ───────────────────────────────────────────────
   useEffect(() => {
-    if (!mapInstanceRef.current || !mapReadyRef.current) return;
-    // Worker renders for current viewport; empty [] is fine — worker has its own building cache.
-    updateShadowSource([], timeState);
+    const map = mapInstanceRef.current;
+    if (!map || !mapReadyRef.current) return;
+    const all = Array.from(buildingCacheRef.current.values());
+    if (all.length === 0) return;
+
+    // Rebuild full visual shadow layer
+    updateShadowSource(all, timeState);
     scheduleSunDataRefresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeState]);
@@ -1258,22 +1261,9 @@ export function MapView({
   // ── redraw when café list changes ─────────────────────────────────────────
   useEffect(() => {
     if (!mapInstanceRef.current || !mapReadyRef.current) return;
-    // Only compute sun data if buildings are already loaded. If not,
-    // loadStaticBuildings() will call updateCafesSource(true) once ready,
-    // preventing onSunDataSettled from firing before we have real building data.
-    const buildingsReady = buildingCacheRef.current.size > 0;
-    // For background merges (lazy pan-loading), use incremental compute so new cafés
-    // don't queue a foreground batch that blocks onSunDataSettled / the spinner.
-    updateCafesSource(buildingsReady, backgroundMerge ?? false);
+    updateCafesSource(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cafes]);
-
-  // ── redraw dots when selection changes ────────────────────────────────────
-  useEffect(() => {
-    if (!mapInstanceRef.current || !mapReadyRef.current) return;
-    updateCafesSource(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCafe]);
 
   // ── visibility filter changed: update visible markers immediately, then
   // only compute sun data for newly-visible cafés (incremental).
@@ -1293,26 +1283,68 @@ export function MapView({
 
   useEffect(() => clearScheduledSunData, []);
 
+  // ── redraw dots when selection changes ────────────────────────────────────
+  useEffect(() => {
+    if (!mapInstanceRef.current || !mapReadyRef.current) return;
+    updateCafesSource(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCafe]);
+
   // ── pan/zoom to selected café ─────────────────────────────────────────────
-  // List selection zooms to 17; map click keeps current zoom.
   useEffect(() => {
     if (!selectedCafe || !mapInstanceRef.current) return;
+    const map = mapInstanceRef.current;
     const fromMap = selectFromMapRef.current;
     selectFromMapRef.current = false;
-    mapInstanceRef.current.easeTo({
+    map.easeTo({
       center: [selectedCafe.lng, selectedCafe.lat],
-      zoom: fromMap ? mapInstanceRef.current.getZoom() : 15,
+      // Map clicks keep current zoom; list selections zoom to 18
+      zoom: fromMap ? map.getZoom() : 15,
       duration: 500,
     });
   }, [selectedCafe]);
+
+  // ── reload buildings when district changes ────────────────────────────────
+  useEffect(() => {
+    if (!mapInstanceRef.current || !mapReadyRef.current) return;
+    const config = DISTRICT_CONFIG[activeDistrict];
+    // Skip the generic district flyTo when a specific café is already selected
+    // (happens on cross-district café clicks: selectedCafe effect handles panning).
+    if (config && !selectedCafeRef.current) {
+      const districtCafes = cafesRef.current.filter(
+        (cafe) => (cafe.district ?? "Berlin") === activeDistrict && visibleCafeIdsRef.current.has(cafe.id)
+      );
+      const cafeBounds = getCafeBounds(districtCafes);
+      if (cafeBounds) {
+        mapInstanceRef.current.fitBounds(tightenBounds(cafeBounds), {
+          padding: { top: 56, right: 56, bottom: 56, left: 56 },
+          duration: 800,
+          maxZoom: 15,
+        });
+      } else {
+        mapInstanceRef.current.fitBounds(
+          tightenBounds([[config.bounds.west, config.bounds.south], [config.bounds.east, config.bounds.north]]),
+          {
+            padding: { top: 56, right: 56, bottom: 56, left: 56 },
+            duration: 800,
+            maxZoom: 15,
+          }
+        );
+      }
+    }
+    loadDistrictBuildings(activeDistrict);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeDistrict]);
 
   // ── render ────────────────────────────────────────────────────────────────
   return (
     <div className="w-full h-full relative">
       <div ref={mapRef} className="w-full h-full" />
 
+      {/* Sunrise/sunset — top right */}
+      <SunInfoOverlay timeState={timeState} />
 
-      {/* Compass + locate button stacked — bottom right */}
+      {/* Locate button + compass stacked — bottom right */}
       <div className="absolute z-[500] flex flex-col gap-3 items-end" style={{ bottom: "24px", right: "16px" }}>
         <button
           onClick={startLiveLocationTracking}
@@ -1332,6 +1364,33 @@ export function MapView({
           timeState={timeState}
           onNorth={() => mapInstanceRef.current?.easeTo({ bearing: 0, duration: 600 })}
         />
+      </div>
+    </div>
+  );
+}
+
+// ─── legend ───────────────────────────────────────────────────────────────────
+function Legend() {
+  return (
+    <div className="bg-white/90 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-lg shadow-zinc-200/40 p-3">
+      <div className="text-zinc-400 font-body uppercase tracking-widest mb-2" style={{ fontSize: "8px", fontWeight: 700, letterSpacing: "0.1em" }}>
+        Legende
+      </div>
+      <div className="flex items-center gap-2 mb-1.5">
+        <div style={{ width: 12, height: 12, borderRadius: 4, background: "#fde68a", border: "1.5px solid #f59e0b" }} />
+        <span className="font-body text-zinc-600" style={{ fontSize: "11px" }}>Sonnig</span>
+      </div>
+      <div className="flex items-center gap-2 mb-1.5">
+        <div style={{ width: 12, height: 12, borderRadius: 4, background: "#334155", opacity: 0.65 }} />
+        <span className="font-body text-zinc-600" style={{ fontSize: "11px" }}>Schatten</span>
+      </div>
+      <div className="flex items-center gap-2 mb-1.5">
+        <div style={{ width: 12, height: 12, borderRadius: 4, background: "#f0ebe3", border: "1.5px solid #c9beaf" }} />
+        <span className="font-body text-zinc-600" style={{ fontSize: "11px" }}>Gebäude</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <div style={{ width: 12, height: 12, borderRadius: 4, background: "#aad3a0" }} />
+        <span className="font-body text-zinc-600" style={{ fontSize: "11px" }}>Grünfläche</span>
       </div>
     </div>
   );
@@ -1374,11 +1433,36 @@ function SunCompass({ timeState, onNorth }: { timeState: TimeState; onNorth?: ()
         <text x={3}          y={r + 2} textAnchor="middle" fontSize="5" fill="#64748b" fontFamily="Figtree, sans-serif" fontWeight="600">W</text>
         <text x={size - 3}   y={r + 2} textAnchor="middle" fontSize="5" fill="#64748b" fontFamily="Figtree, sans-serif" fontWeight="600">O</text>
         {isUp ? (
-          <text x={sx} y={sy + 5} textAnchor="middle" fontSize="16" fill="#94a3b8">☀️</text>
+          <text
+            x={sx}
+            y={sy + 5}
+            textAnchor="middle"
+            fontSize="16"
+            style={{ fontFamily: "Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif" }}
+          >
+            ☀️
+          </text>
         ) : (
           <text x={r} y={r + 5} textAnchor="middle" fontSize="16" fill="#94a3b8">🌙</text>
         )}
       </svg>
+    </div>
+  );
+}
+
+// ─── sun info ─────────────────────────────────────────────────────────────────
+function SunInfoOverlay({ timeState }: { timeState: TimeState }) {
+  const date  = new Date(`${timeState.date}T${timeState.time}:00`);
+  const times = getSunTimes(BERLIN_CENTER[0], BERLIN_CENTER[1], date);
+  const fmt   = (d: Date) => d.toLocaleTimeString("de-AT", { hour: "2-digit", minute: "2-digit" });
+
+  return (
+    <div className="absolute top-3 right-3 z-[500] bg-white/80 backdrop-blur-xl rounded-2xl border border-zinc-100 shadow-lg shadow-zinc-200/30 px-3.5 py-2">
+      <div className="flex items-center gap-2.5 font-body text-zinc-500" style={{ fontSize: "12px" }}>
+        <span>🌅 {fmt(times.sunrise)}</span>
+        <span className="text-zinc-200">·</span>
+        <span>🌇 {fmt(times.sunset)}</span>
+      </div>
     </div>
   );
 }
